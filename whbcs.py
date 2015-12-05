@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: ascii -*-
 
-# Weird HomeBrew Chat Server -- v1.
+# Weird HomeBrew Chat Server -- v1.2.
 
 from __future__ import print_function
 
@@ -12,15 +12,16 @@ import io
 import socket
 import logging
 import threading
+import signal
 
 try:
     from Queue import Queue, Empty
 except ImportError:
     from queue import Queue, Empty
 
-SIGNATURE = 'WHBCS v1.1'
+SIGNATURE = 'WHBCS v1.2'
 COMMENT = '''
-# Weird Homebrew Chat Server (v1.1).
+# Weird Homebrew Chat Server (v1.2).
 # Type "/help" for a command overview.
 '''[1:-1]
 HELP = '''
@@ -29,7 +30,7 @@ HELP = '''
 # /term -> Query current terminal type.
 # /term dumb -> Minimalistic mode.
 # /term ansi -> Advanced escape sequences.
-# /term vte -> Workaround for some (buggy) terminals.
+# /term vte -> Workaround for some buggy terminals.
 # Nick-name configuration:
 # /nick -> Query current nick.
 # /nick <nick> -> Set/change nick-name
@@ -133,6 +134,22 @@ def format_message(msg, color=False):
     ret.append(make_seq())
     return ''.join(ret)
 
+MENTION_RE = re.compile(r'\B@(\S+?)(?=[.,:;!?)]*(\s|$))')
+
+# Nice up @-mentions in a message.
+def prepare_message(msg):
+    ret = []
+    while msg:
+        m = MENTION_RE.search(msg)
+        if not m:
+            ret.append(msg)
+            break
+        if m.start() != 0:
+            ret.append(msg[:m.start()])
+        ret.append({'color': 'orange', 'text': m.group()})
+        msg = msg[m.end():]
+    return ret
+
 class ChatDistributor:
     def __init__(self):
         self.lock = threading.RLock()
@@ -161,6 +178,9 @@ class ChatDistributor:
             h = list(self.handlers)
         return [x for x in h if x.nickname]
 
+    def prepare_message(self, msg):
+        return prepare_message(msg)
+
     def join(self, handler, **params):
         logging.info('JOIN id=%d term=%s nick=%r' % (handler.id,
             handler.termtype, handler.nickname))
@@ -185,18 +205,20 @@ class ChatDistributor:
         logging.info('EMOTE id=%s nick=%r text=%r' % (handler.id,
             handler.nickname, message))
         self.broadcast(dict(text=[{'color': 'turquiose', 'text': '*'}, ' ',
-            {'color': 'purple', 'text': handler.nickname}, ' ', message],
-            **params))
+            {'color': 'purple', 'text': handler.nickname}, ' ',
+            self.prepare_message(message)], **params))
     def say(self, handler, message, **params):
         logging.info('SAY id=%s nick=%r text=%r' % (handler.id,
             handler.nickname, message))
         self.broadcast(dict(text=[{'color': 'turquiose', 'text': '<'},
             {'color': 'purple', 'text': handler.nickname},
-            {'color': 'turquiose', 'text': '>'}, ' ', message], **params))
+            {'color': 'turquiose', 'text': '>'}, ' ',
+            self.prepare_message(message)], **params))
     def closed(self, handler, **params):
         ok = (not params.get('abrupt'))
         logging.info('%s id=%r from=%r' % ('CLOSE' if ok else 'ABORT',
                                            handler.id, handler.addr))
+        self.remove_handler(handler)
         if ok: return
         self.broadcast(dict(text=[{'color': 'bold', 'text': '***'}, ' ',
             {'color': 'purple', 'text': handler.nickname}, ' ',
@@ -213,7 +235,8 @@ class ChatDistributor:
             ' Server is closing; goodbye!']})
         self._sending = False
         with self.lock:
-            for h in self.handlers:
+            l = list(self.handlers)
+            for h in l:
                 h.close()
 
 class ClientHandler:
@@ -253,6 +276,7 @@ class ClientHandler:
         self.file.flush()
     def close(self):
         if self.state == self.ST_CLOSED: return
+        self.state = self.ST_CLOSED
         try:
             self.distributor.closed(self,
                 abrupt=(self.state != self.ST_PREPARING),
@@ -269,7 +293,6 @@ class ClientHandler:
                 self.sock.close()
             except IOError:
                 pass
-            self.state = self.ST_CLOSED
 
     def print(self, *args, **kwds):
         s = format_print(*args, **kwds)
@@ -296,7 +319,7 @@ class ClientHandler:
             if not l:
                 continue
             elif not l.startswith('\033['):
-                # cancel is handled implicitly.
+                # "cancel" is handled implicitly.
                 return
             elif not l.endswith('R'):
                 return
@@ -325,13 +348,13 @@ class ClientHandler:
 
     def handle_line(self, l):
         self._nl = True
-        if self.termtype == 'vte' and self.state == self.ST_INTERACTIVE:
-            self.write('\033M')
         while 1:
             try:
                 self.print_broadcast(self.bcqueue.get(False))
             except Empty:
                 break
+        if self.termtype == 'vte':
+            time.sleep(0.05)
         tokens = l.split()
         if not tokens:
             if self.state == self.ST_READING:
@@ -362,7 +385,7 @@ class ClientHandler:
         elif tokens[0].startswith('/'):
             self.print("# No such command!")
         else:
-            self.say(l.rstrip(), (self.termtype != 'dumb'))
+            self.say(l.rstrip(), (self.termtype == 'ansi'))
         if self.state in (self.ST_INTERACTIVE, self.ST_WRITING):
             self.prompt()
     def handle_close(self, ok):
@@ -421,7 +444,7 @@ class ClientHandler:
         if len(args) == 0:
             self.print('# Alerts: %s' % self.alerts)
         elif len(args) != 1 or args[0] not in ('off', 'once', 'on'):
-            self.print('# USAGE: /alerts [off|once|on]')
+            self.print('# USAGE: /alert [off|once|on]')
         else:
             self.alerts = args[0]
 
@@ -457,8 +480,8 @@ class ClientHandler:
             elif not self._nl:
                 self.print()
                 self._nl = True
-            self.print('# Left.')
             self.state = self.ST_PREPARING
+            self.print('# Left.')
 
     def emote(self, msg=None, echo=True):
         if msg is None:
@@ -490,7 +513,7 @@ class ClientHandler:
             if ul:
                 for n, i in enumerate(ul):
                     if n: msg.append(',')
-                    msg.append({'color': 'purple', 'text': i.nickname})
+                    msg.append({'color': 'orange', 'text': i.nickname})
             else:
                 msg.append('<none>')
             self.print(format_message(msg,
@@ -530,6 +553,10 @@ def mainloop(host, port):
         return distr
 
 def main():
+    # Signal handler.
+    def handler(signum, frame):
+        raise KeyboardInterrupt
+    # Variables.
     host, port, logfile = HOST, PORT, None
     # Parse arguments.
     try:
@@ -561,7 +588,11 @@ def main():
     if logfile is not None: config['filename'] = logfile
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s %(name)s '
         '%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S', **config)
+    logging.info('WHBCS version=%s' % SIGNATURE.split()[1])
     logging.info('SERVING bind=%s:%s' % (host or '*', port))
+    # Install signal handlers.
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
     # Run.
     distr = mainloop(host, port)
     if distr: distr.close()
