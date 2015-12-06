@@ -19,34 +19,32 @@ try:
 except ImportError:
     from queue import Queue, Empty
 
-SIGNATURE = 'WHBCS v1.2'
+SIGNATURE = 'WHBCS v1.3'
 COMMENT = '''
-# Weird Homebrew Chat Server (v1.2).
+# Weird Homebrew Chat Server (v1.3).
 # Type "/help" for a command overview.
 '''[1:-1]
 HELP = '''
 # HELP
-# Output configuration:
-# /term -> Query current terminal type.
-# /term dumb -> Minimalistic mode.
-# /term ansi -> Advanced escape sequences.
-# /term vte -> Workaround for some buggy terminals.
-# Nick-name configuration:
-# /nick -> Query current nick.
-# /nick <nick> -> Set/change nick-name
-# Joining/leaving:
-# /join -> Join room.
-# /leave -> Leave room.
+# Configuration:
+#   /term [dumb|ansi|vte] -> Query/Set terminal type.
+#     dumb: minimalistic mode; ansi: advanced escape sequences;
+#     vte: workaround for some buggy terminals.
+#   /nick [<nick>] -> Query/Set nick-name.
+#   /alert [off|once|mention|on] -> Query/Set alert status.
+#     off: disabled at all; once; alert only once; mention:
+#     alert for any @-mention of myself; on: alert for any.
+#   /ao -> Alias for /alert once.
+# Connection control:
+#   /join -> Join room.
+#   /leave -> Leave room.
+#   /quit -> Quit (close connection).
 # Chatting
-# /say <text...> -> Say a message (explicitly).
-# /me <text...> -> Emote message.
-# /list -> List users online.
+#   /say <text...> -> Say a message (explicitly).
+#   /me <text...> -> Emote message.
+#   /list -> List users online.
 # Other
-# /alert -> Show current alert status.
-# /alert off -> Disable alerts.
-# /alert once -> Only alert for the first message.
-# /alert on -> Alert for any message.
-# /quit -> Quit.
+#   /ping -> Send a PONG reply.
 '''[1:-1]
 
 HOST = ''
@@ -146,9 +144,22 @@ def prepare_message(msg):
             break
         if m.start() != 0:
             ret.append(msg[:m.start()])
-        ret.append({'color': 'orange', 'text': m.group()})
+        ret.append({'color': 'orange', 'text': m.group(),
+                    'mention': m.group()[1:]})
         msg = msg[m.end():]
     return ret
+
+# Scan for @-mentions of the given nick.
+def scan_mentions(msg, nick):
+    if isinstance(msg, dict):
+        if msg.get('mention') == nick:
+            return True
+        return scan_mentions(msg.get('text'), nick)
+    elif isinstance(msg, (list, tuple)):
+        for e in msg:
+            if scan_mentions(e, nick):
+                return True
+    return False
 
 class ChatDistributor:
     def __init__(self):
@@ -363,12 +374,16 @@ class ClientHandler:
             raise SystemExit
         elif tokens[0] == '/help':
             self.print(HELP)
+        elif tokens[0] == '/ping':
+            self.print('PONG')
         elif tokens[0] == '/term':
             self.change_term(tokens[1:])
         elif tokens[0] == '/nick':
             self.change_nick(tokens[1:])
         elif tokens[0] == '/alert':
             self.change_alerts(tokens[1:])
+        elif tokens[0] == '/ao':
+            self.change_alerts(('once',))
         elif tokens[0] == '/join':
             if self.join_room(tokens[1:]):
                 return
@@ -400,7 +415,11 @@ class ClientHandler:
         else:
             self.print_broadcast(format_message(msg, clr))
         if self.alerts != 'off':
-            if self.alerts == 'once': self.alerts = 'off'
+            if self.alerts == 'once':
+                self.alerts = 'off'
+            elif self.alerts == 'mention':
+                if not scan_mentions(msg, self.nickname):
+                    return
             self.write('\a')
     def handle_beacon(self, msg):
         self.write('\0')
@@ -443,8 +462,9 @@ class ClientHandler:
     def change_alerts(self, args):
         if len(args) == 0:
             self.print('# Alerts: %s' % self.alerts)
-        elif len(args) != 1 or args[0] not in ('off', 'once', 'on'):
-            self.print('# USAGE: /alert [off|once|on]')
+        elif len(args) != 1 or args[0] not in ('off', 'once',
+                                               'mention', 'on'):
+            self.print('# USAGE: /alert [off|once|mention|on]')
         else:
             self.alerts = args[0]
 
