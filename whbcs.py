@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: ascii -*-
 
-# Weird HomeBrew Chat Server -- v1.2.
+# Weird HomeBrew Chat Server -- v1.4.
 
 from __future__ import print_function
 
@@ -19,9 +19,9 @@ try:
 except ImportError:
     from queue import Queue, Empty
 
-SIGNATURE = 'WHBCS v1.3'
+SIGNATURE = 'WHBCS v1.4'
 COMMENT = '''
-# Weird Homebrew Chat Server (v1.3).
+# Weird Homebrew Chat Server (v1.4).
 # Type "/help" for a command overview.
 '''[1:-1]
 HELP = '''
@@ -162,7 +162,8 @@ def scan_mentions(msg, nick):
     return False
 
 class ChatDistributor:
-    def __init__(self):
+    def __init__(self, sock):
+        self.sock = sock
         self.lock = threading.RLock()
         self.handlers = set()
         self._sending = True
@@ -250,6 +251,20 @@ class ChatDistributor:
             for h in l:
                 h.close()
 
+    def __call__(self):
+        self.sock.listen(5)
+        ident = 0
+        try:
+            while 1:
+                c, a = self.sock.accept()
+                ident += 1
+                logging.info('CONNECTION id=%r from=%r' % (ident, a))
+                spawn_thread(ClientHandler(self, ident, c, a))
+                c, a = None, None
+        except KeyboardInterrupt:
+            pass
+
+
 class ClientHandler:
     ST_PREPARING = 'preparing'
     ST_READING = 'reading'
@@ -262,6 +277,7 @@ class ClientHandler:
         self.id = ident
         self.sock = sock
         self.addr = addr
+        self._init_sock()
         self._flock = threading.RLock()
         self._rawfile = self.sock.makefile('rwb')
         self.bcqueue = Queue()
@@ -273,6 +289,9 @@ class ClientHandler:
         self.state = self.ST_PREPARING
         self.height = None
         self._nl = True
+
+    def _init_sock(self):
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
     def read(self, n):
         if self.state == self.ST_CLOSED: return ''
@@ -421,7 +440,7 @@ class ClientHandler:
                 if not scan_mentions(msg, self.nickname):
                     return
             self.write('\a')
-    def handle_beacon(self, msg):
+    def handle_beacon(self):
         self.write('\0')
 
     def prompt(self):
@@ -559,18 +578,13 @@ def mainloop(host, port):
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((host, port))
-    s.listen(5)
-    distr = ChatDistributor()
-    ident = 0
+    distr = ChatDistributor(s)
+    distr.start()
     try:
-        while 1:
-            c, a = s.accept()
-            ident += 1
-            logging.info('CONNECTION id=%r from=%r' % (ident, a))
-            spawn_thread(ClientHandler(distr, ident, c, a))
-            c, a = None, None
+        distr()
     except KeyboardInterrupt:
-        return distr
+        pass
+    return distr
 
 def main():
     # Signal handler.
