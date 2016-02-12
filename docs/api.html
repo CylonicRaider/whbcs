@@ -5,15 +5,17 @@
     <style type="text/css">
 body { font-family: "Times New Roman", serif; }
 tt, pre { font-family: "Courier New", monospace; }
-pre { background: #e0e0e0; }
 h1 { text-align: center; }
 p, li, aside { text-align: justify; }
-h1, h2, h3, h4, p, ul, aside, hr { margin: 5px 0; }
+pre { background: #e0e0e0; }
+h1, h2, h3, h4, h5, p, ul, pre, aside, hr { margin: 5px 0; }
 ul { padding-left: 1em; }
+pre { padding: 3px 0; }
+h5 { font-size: 1em; }
 article { margin: auto; max-width: 40em; }
 aside { font-style: italic; margin: 5px 1em; }
 aside:first-child { margin: 5px 0; }
-aside > strong:first-child { font-style: normal; }
+aside > h5:first-child { display: inline; font-style: normal; }
 /* Fancy headline counting */
 h2::before, h3::before, h4::before {
   font-size: 1rem;
@@ -47,7 +49,8 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 1, as of 2016-02-11</aside>
+<aside>Revision 2, as of 2016-02-12</aside>
+
 <h2>Preface</h2>
 <p><tt>WHBCS</tt> came into existence after I had a <tt>netcat</tt> chat with
 an acquaintance, showing that such a client-less chat has both the merit of
@@ -57,7 +60,9 @@ in such a conversation. After that, I wrote up <tt>WHBCS</tt>, trying to use
 some ANSI escape codes to make others' messages appear above the own one
 being typed, indeed succeeding at that. As it got mildly popular within the
 related circles, the topic of bots was raised, which led to this API.</p>
+
 <h2>Basics</h2>
+
 <h3>Low-level communication</h3>
 <p>Clients communicate with the server by sending (and receiving) octets over
 a TCP channel, which are to be mapped to ASCII codepoints. UTF-8 is not
@@ -65,12 +70,14 @@ employed as not all endpoints are guaranteed to use it; opt-in support may be
 added upon popular demand.</p>
 <p>As far as this API is concerned, communication is always line-based; lines
 are terminated with the line feed (<tt>\x0A</tt>) character.</p>
+
 <h3>Initial handshake</h3>
 <p>Initially, the connection is in <em>doorstep mode</em>, the server,
 assuming a human client, sends a textual greeting after a version
 advertisement. A human client would configure certain properties of themself
 &mdash; the terminal type and the nickname &mdash; and join; bots can enable
 <em>API mode</em> instead.</p>
+
 <h4>Server lines</h4>
 <p><em>Comment lines</em> are sent for human users' information; they begin
 with a number sign (<tt>#</tt>) and can be safely ignored. Lines relevant to
@@ -93,6 +100,7 @@ not successful. Syntax similar to <tt>OK</tt>.</li>
 <tt>/ping</tt> command, which can be used to probe connection connectivity.
 The syntax is again similar to <tt>OK</tt>.</li>
 </ul>
+
 <h4>Client lines</h4>
 <p>For continuity with in-chat commands, client-side lines begin with a slash
 (<tt>/</tt>) character. Out of the commands, only <tt>/api</tt> is relevant
@@ -105,6 +113,7 @@ the connection (after performing some clean-up, which is not necessary in API
 mode); a list (with terse descriptions; <small>not including the
 <tt>/api</tt> command</small>) can be obtained by using the <tt>/help</tt>
 command interactively.</p>
+
 <h3>API mode format</h3>
 <p>In API mode, the commands mentioned earlier are complemented by <em>JSON
 objects</em> as the main means of transporting data; the separation of words
@@ -112,12 +121,89 @@ is irrelevant for those, and should not be performed. More exactly, lines
 starting with the opening brace character (<tt>{</tt>) are interpreted as
 JSON messages by WHBCS, and the server sends all its messages in JSON
 format.</p>
-<aside><strong>Note</strong> that messages not starting with a brace will be
+<aside><h5>Note</h5> that messages not starting with a brace will be
 interpreted as in non-API mode; commands can be used and messages can be sent
 (if the API client has joined properly), although this behavior is
 discouraged.</aside>
+
 <h2>API messages</h2>
-<p>&mdash; <em>More content to follow...</em> &mdash;</p>
+<p>The client and the server may send messages at any time (asynchronously);
+the server guarantees to process the client's command in the order they
+arrive at the server (and, therefore, most probably are sent). As noted
+above, messages are encoded as JSON objects.</p>
+
+<h3>Common attributes</h3>
+<p>This section specifies attributes common to all object types. Some of them
+only apply to top-level messages.</p>
+<ul>
+<li><tt>type</tt> &mdash; <strong>Object type</strong>: The semantical type
+of the object. The value is a string. Note that objects may be nested inside
+each other, so this is not limited to message types.</li>
+<li><tt>variant</tt> &mdash; <strong>Type differentiation</strong>: Indicates
+a different "sub-type", or a different role an object has. As <tt>type</tt>,
+the value is a string. E.g., the <tt>message</tt> type has the variants
+<tt>post</tt> and <tt>emote</tt>.</li>
+<li><tt>content</tt> &mdash; <strong>Main content</strong>: Stores, well, the
+main content of the object. Can be of an arbitrary type.</li>
+<li><tt>seq</tt> &mdash; <strong>Sequence number</strong>: An arbitrary value
+set by the client in requests; server replies to those will include it
+unmodified. Use is optional.</li>
+<li><tt>timestamp</tt> &mdash; <strong>Timestamp</strong>: A UNIX timestamp
+of when roughly the current object was constructed. The value if a
+floating-point number; while the unit is a second, more precision may be
+available.</li>
+</ul>
+
+<h3>Client commands</h3>
+<p>The section titles list the <tt>type</tt> attributes to set.</p>
+
+<h4><tt>ping</tt></h4>
+<p>Lets the server return a <tt>pong</tt> message. Can be used to probe
+connectivity.</p>
+
+<h4><tt>query</tt></h4>
+<p>Asks the server to inform the client about some of its state.
+<tt>variant</tt> is one of the following:</p>
+<ul>
+<li><tt>id</tt> &mdash; <strong>Client identification</strong>: A unique
+identifier of the client currently connected. May be reused after a client
+leaves, or after server restarts. Currently an integer, but could be a
+string in future server versions.</li>
+<li><tt>nick</tt> &mdash; <strong>Nickname</strong>: The current in-chat
+nickname of the client.</li>
+</ul>
+<p>An optional <tt>id</tt> member may specify an alternative client (by its
+ID) to query state from.</p>
+<h5>Example</h5>
+<pre>
+{type: "query", variant: "nick", id: 75}
+</pre>
+<p>&mdash; queries the nickname of client <tt>75</tt>.</p>
+
+<h4><tt>update</tt></h4>
+<p>Asks the server to change some client state, as listed in <tt>query</tt>.
+The <tt>value</tt> member tells what to change the value to. Certain values
+(<tt>id</tt>) cannot be changed; changing values of other clients
+(symmetrically to <tt>query</tt>) is disallowed.</p>
+<h5>Example</h5>
+<pre>
+{type: "update", variant: "nick", value: "Test"}
+</pre>
+<p>&mdash; changes the current nickname to <tt>Test</tt>.</p>
+
+<h3>Server replies</h3>
+
+<h4><tt>pong</tt></h4>
+<p>Indicates a <tt>ping</tt> command was received.</p>
+
+<h4><tt>success</tt></h4>
+<p>Indicates that a command succeeded. No further fields.</p>
+
+<h4><tt>failure</tt></h4>
+<p>Indicates that a command failed. The <tt>code</tt> field contains a
+short symbolic name for the error, the <tt>desc</tt> field a longer
+human-readable description.</p>
+
     </article>
     <hr/>
   </body>
