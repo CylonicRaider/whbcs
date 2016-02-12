@@ -1,0 +1,124 @@
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>WHBCA &mdash; Weird HomeBrew Chat API</title>
+    <style type="text/css">
+body { font-family: "Times New Roman", serif; }
+tt, pre { font-family: "Courier New", monospace; }
+pre { background: #e0e0e0; }
+h1 { text-align: center; }
+p, li, aside { text-align: justify; }
+h1, h2, h3, h4, p, ul, aside, hr { margin: 5px 0; }
+ul { padding-left: 1em; }
+article { margin: auto; max-width: 40em; }
+aside { font-style: italic; margin: 5px 1em; }
+aside:first-child { margin: 5px 0; }
+aside > strong:first-child { font-style: normal; }
+/* Fancy headline counting */
+h2::before, h3::before, h4::before {
+  font-size: 1rem;
+  font-weight: normal;
+  color: #808080;
+}
+body {
+  counter-reset: h2ctr;
+}
+h2::before {
+  content: counter(h2ctr) ". ";
+  counter-increment: h2ctr;
+}
+h2 {
+  counter-reset: h3ctr;
+}
+h3::before {
+  content: counter(h2ctr) "." counter(h3ctr) ". ";
+  counter-increment: h3ctr;
+}
+h3 {
+  counter-reset: h4ctr;
+}
+h4::before {
+  content: counter(h2ctr) "." counter(h3ctr) "." counter(h4ctr) ". ";
+  counter-increment: h4ctr;
+}
+    </style>
+  </head>
+  <body>
+    <h1>Weird HomeBrew Chat API</h1>
+    <hr/>
+    <article>
+<aside>Revision 1, as of 2016-02-11</aside>
+<h2>Preface</h2>
+<p><tt>WHBCS</tt> came into existence after I had a <tt>netcat</tt> chat with
+an acquaintance, showing that such a client-less chat has both the merit of
+not having to install a client and the expense of the other's messages
+interrupting the own typing; additionally, only two people could participate
+in such a conversation. After that, I wrote up <tt>WHBCS</tt>, trying to use
+some ANSI escape codes to make others' messages appear above the own one
+being typed, indeed succeeding at that. As it got mildly popular within the
+related circles, the topic of bots was raised, which led to this API.</p>
+<h2>Basics</h2>
+<h3>Low-level communication</h3>
+<p>Clients communicate with the server by sending (and receiving) octets over
+a TCP channel, which are to be mapped to ASCII codepoints. UTF-8 is not
+employed as not all endpoints are guaranteed to use it; opt-in support may be
+added upon popular demand.</p>
+<p>As far as this API is concerned, communication is always line-based; lines
+are terminated with the line feed (<tt>\x0A</tt>) character.</p>
+<h3>Initial handshake</h3>
+<p>Initially, the connection is in <em>doorstep mode</em>, the server,
+assuming a human client, sends a textual greeting after a version
+advertisement. A human client would configure certain properties of themself
+&mdash; the terminal type and the nickname &mdash; and join; bots can enable
+<em>API mode</em> instead.</p>
+<h4>Server lines</h4>
+<p><em>Comment lines</em> are sent for human users' information; they begin
+with a number sign (<tt>#</tt>) and can be safely ignored. Lines relevant to
+the API are split into <em>words</em> by whitespace; they can be
+discriminated by their first word:</p>
+<ul>
+<li><tt>WHBCS</tt> &mdash; <strong>Version advertisement</strong>: Sent by
+WHBCS as the very first line, with the version following the heading as a
+second word. Additional words may be specified in the future. The version
+this API applies to is <tt>v1.5</tt>, servers with a higher minor version
+shall behave downwards-compatibly (though such with a higher major version
+may not).</li>
+<li><tt>OK</tt> &mdash; <strong>Acknowledgement</strong>: Indicates a
+client-side command was successful. Further words may be specified in the
+future. A word consisting of a single number sign indicates the end of
+API-relevant payload and the beginning of comments for human users.</li>
+<li><tt>FAIL</tt> &mdash; <strong>Failure</strong>: Indicates a command was
+not successful. Syntax similar to <tt>OK</tt>.</li>
+<li><tt>PONG</tt> &mdash; <strong>Ping reply</strong>: Sent as a reply to a
+<tt>/ping</tt> command, which can be used to probe connection connectivity.
+The syntax is again similar to <tt>OK</tt>.</li>
+</ul>
+<h4>Client lines</h4>
+<p>For continuity with in-chat commands, client-side lines begin with a slash
+(<tt>/</tt>) character. Out of the commands, only <tt>/api</tt> is relevant
+to API clients, it changes the connection into API mode. The server's reply
+will still conform to the protocol described in this subsection
+(<em>i.e.</em>, be either a <tt>OK</tt> or a <tt>FAIL</tt>).</p>
+<p>Other notable commands include <tt>/ping</tt>, which results in the server
+sending a <tt>PONG</tt> reply, and <tt>/quit</tt>, which lets WHBCS terminate
+the connection (after performing some clean-up, which is not necessary in API
+mode); a list (with terse descriptions; <small>not including the
+<tt>/api</tt> command</small>) can be obtained by using the <tt>/help</tt>
+command interactively.</p>
+<h3>API mode format</h3>
+<p>In API mode, the commands mentioned earlier are complemented by <em>JSON
+objects</em> as the main means of transporting data; the separation of words
+is irrelevant for those, and should not be performed. More exactly, lines
+starting with the opening brace character (<tt>{</tt>) are interpreted as
+JSON messages by WHBCS, and the server sends all its messages in JSON
+format.</p>
+<aside><strong>Note</strong> that messages not starting with a brace will be
+interpreted as in non-API mode; commands can be used and messages can be sent
+(if the API client has joined properly), although this behavior is
+discouraged.</aside>
+<h2>API messages</h2>
+<p>&mdash; <em>More content to follow...</em> &mdash;</p>
+    </article>
+    <hr/>
+  </body>
+</html>
