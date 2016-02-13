@@ -7,11 +7,12 @@ body { font-family: "Times New Roman", serif; }
 tt, pre { font-family: "Courier New", monospace; }
 h1 { text-align: center; }
 p, li, aside { text-align: justify; }
-pre { background: #e0e0e0; }
+pre { background: #e0e0e0; white-space: pre-wrap; }
 h1, h2, h3, h4, h5, p, ul, pre, aside, hr { margin: 5px 0; }
+h2, h3, h4 { margin-top: 15px; }
+h5 { font-size: 1em; }
 ul { padding-left: 1em; }
 pre { padding: 3px 0; }
-h5 { font-size: 1em; }
 article { margin: auto; max-width: 40em; }
 aside { font-style: italic; margin: 5px 1em; }
 aside:first-child { margin: 5px 0; }
@@ -49,7 +50,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 2, as of 2016-02-12</aside>
+<aside>Revision 3, as of 2016-02-13</aside>
 
 <h2>Preface</h2>
 <p><tt>WHBCS</tt> came into existence after I had a <tt>netcat</tt> chat with
@@ -106,7 +107,7 @@ The syntax is again similar to <tt>OK</tt>.</li>
 (<tt>/</tt>) character. Out of the commands, only <tt>/api</tt> is relevant
 to API clients, it changes the connection into API mode. The server's reply
 will still conform to the protocol described in this subsection
-(<em>i.e.</em>, be either a <tt>OK</tt> or a <tt>FAIL</tt>).</p>
+(<i>i.e.</i>, be either a <tt>OK</tt> or a <tt>FAIL</tt>).</p>
 <p>Other notable commands include <tt>/ping</tt>, which results in the server
 sending a <tt>PONG</tt> reply, and <tt>/quit</tt>, which lets WHBCS terminate
 the connection (after performing some clean-up, which is not necessary in API
@@ -152,6 +153,14 @@ unmodified. Use is optional.</li>
 of when roughly the current object was constructed. The value if a
 floating-point number; while the unit is a second, more precision may be
 available.</li>
+<li><tt>text</tt> &mdash; <strong>Textual representation</strong>: The
+server's preferred way of presenting the given object, as used for terminal
+clients. May be absent, indicating the server does not honor this object with
+a textual representation. The value may be a string, or an array of strings
+and/or nested objects, which can have <tt>text</tt> fields as well. Objects
+without <tt>text</tt> fields are provided as context and would not be
+rendered into text by the server itself. The emission of <tt>text</tt> fields
+might be configurable in the future (to save bandwidth).</p>
 </ul>
 
 <h3>Client commands</h3>
@@ -163,46 +172,76 @@ connectivity.</p>
 
 <h4><tt>query</tt></h4>
 <p>Asks the server to inform the client about some of its state.
-<tt>variant</tt> is one of the following:</p>
-<ul>
-<li><tt>id</tt> &mdash; <strong>Client identification</strong>: A unique
-identifier of the client currently connected. May be reused after a client
-leaves, or after server restarts. Currently an integer, but could be a
-string in future server versions.</li>
-<li><tt>nick</tt> &mdash; <strong>Nickname</strong>: The current in-chat
-nickname of the client.</li>
-</ul>
-<p>An optional <tt>id</tt> member may specify an alternative client (by its
-ID) to query state from.</p>
-<h5>Example</h5>
-<pre>
-{type: "query", variant: "nick", id: 75}
-</pre>
-<p>&mdash; queries the nickname of client <tt>75</tt>.</p>
+<tt>content</tt> is a <tt><b>variable</b></tt> without a <tt>value</tt>
+indicating what to query. The server returns either a
+<tt><b>success</b></tt> or a <tt><b>failure</b></tt>, depending on whether
+the request is valid, and whether the client is allowed to perform it.</p>
 
 <h4><tt>update</tt></h4>
-<p>Asks the server to change some client state, as listed in <tt>query</tt>.
-The <tt>value</tt> member tells what to change the value to. Certain values
-(<tt>id</tt>) cannot be changed; changing values of other clients
-(symmetrically to <tt>query</tt>) is disallowed.</p>
-<h5>Example</h5>
-<pre>
-{type: "update", variant: "nick", value: "Test"}
-</pre>
-<p>&mdash; changes the current nickname to <tt>Test</tt>.</p>
+<p>Asks the server to change some client state, similarly to
+<tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>value</tt>, which
+tells what to change the variable to.</p>
+
+<h4><tt>join</tt></h4>
+<p>Tells the server the client is ready to enter chat. A modified
+<tt><b>joined</b></tt> is sent to the client as confirmation (instead of a
+<tt><b>success</b></tt>).</p>
+
+<h4><tt>leave</tt></h4>
+<p>Tells the server that the client wants to leave chat again. A modified
+<tt><b>left</b></tt> is sent to the client as confirmation.</p>
+
+<h4><tt>send</tt></h4>
+<p>Sends a chat message. <tt>content</tt> is a <tt><b>post</b></tt>
+specifying what exactly to send. The <tt><b>post</b></tt>'s
+<tt>content</tt> may be a plain string, letting the server interpret it, and
+is in fact currently required to be like that. Instead of a
+<tt><b>success</b></tt>, the server replies with a special
+<tt><b>chat</b></tt> including the command's sequence number.</p>
+
+<h4><tt>quit</tt></h4>
+<p>Tells the server to remove the client from chat (if there) and to close
+the connection.</p>
 
 <h3>Server replies</h3>
+<p>Generic synchronous replies to commands.</p>
 
 <h4><tt>pong</tt></h4>
 <p>Indicates a <tt>ping</tt> command was received.</p>
 
 <h4><tt>success</tt></h4>
-<p>Indicates that a command succeeded. No further fields.</p>
+<p>Indicates that a command succeeded. <tt>content</tt> may contain reply
+data.</p>
 
 <h4><tt>failure</tt></h4>
-<p>Indicates that a command failed. The <tt>code</tt> field contains a
-short symbolic name for the error, the <tt>desc</tt> field a longer
-human-readable description.</p>
+<p>Indicates that a command failed. <tt>content</tt> contains an
+<tt><b>error</b></tt> object.</p>
+
+<h3>Asynchronous events</h3>
+<p>Those messages are sent by the server when events of interest to clients
+happen.</p>
+
+<h4><tt>joined</tt></h4>
+<p>A client joined the room. <tt>content</tt> is a <tt><b>user</b></tt>
+object containing details about the newly-joined participant.</p>
+
+<h4><tt>left</tt></h4>
+<p>A client left. <tt>content</tt> &mdash; symmetrically to
+<tt><b>joined</b></tt> &mdash; elaborates on which client exactly left.
+<tt>variant</tt> may be <tt>normal</tt> or <tt>abrupt</tt>, denoting whether
+the client disconnected "properly" (<i>i.e.</i>, by a <tt><b>leave</b></tt>
+or a <tt><b>quit</b></tt>) or not, respectively.</p>
+
+<h4><tt>chat</tt></h4>
+<p>A chat message was posted. <tt>content</tt> contains a
+<tt><b>post</b></tt> representing the chat message.</p>
+
+<h4><tt>sysmsg</tt></h4>
+<p>A system message from the server. The <tt>text</tt> fields contains
+more details.</p>
+
+<h3>In-message data types</h3>
+<p>&mdash; <em>To be added</em> &mdash;</p>
 
     </article>
     <hr/>
