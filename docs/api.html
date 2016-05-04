@@ -52,7 +52,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 4, as of 2016-02-14</aside>
+<aside>Revision 5, as of 2016-05-04</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -91,7 +91,7 @@ discriminated by their first word:</p>
 WHBCS as the very first line, with the version following the heading as a
 second word. Additional words may be specified in the future. The version
 this API applies to is <tt>v1.5</tt> &mdash; <strong>which means that it is
-not implemented as of now <em>(2016-04-04)</em></strong> &mdash;, servers
+not implemented as of now <em>(2016-05-04)</em></strong> &mdash;, servers
 with a higher minor version shall behave downwards-compatibly (though such
 with a higher major version may not).</li>
 <li><tt>OK</tt> &mdash; <strong>Acknowledgement</strong>: Indicates a
@@ -145,8 +145,8 @@ of the object. The value is a string. Note that objects may be nested inside
 each other, so this is not limited to message types.</li>
 <li><tt>variant</tt> &mdash; <strong>Type differentiation</strong>: Indicates
 a different "sub-type", or a different role an object has. As <tt>type</tt>,
-the value is a string. E.g., the <tt><b>post</b></tt> type has the variants
-<tt>normal</tt> and <tt>emote</tt>.</li>
+the value is a string. <i>E.g.</i>, the <tt><b>post</b></tt> type has the
+variants <tt>normal</tt> and <tt>emote</tt>.</li>
 <li><tt>content</tt> &mdash; <strong>Main content</strong>: Stores, well, the
 main content of the object. Can be of an arbitrary type.</li>
 <li><tt>text</tt> &mdash; <strong>Textual representation</strong>: The
@@ -156,7 +156,8 @@ a textual representation. The value may be a string, or an array of strings
 and/or nested objects, which can have <tt>text</tt> fields as well. Objects
 without <tt>text</tt> fields are provided as context and would not be
 rendered into text by the server itself. The emission of <tt>text</tt> fields
-might be configurable in the future (to save bandwidth).</li>
+is configurable (to save bandwidth) by updating the <tt><b>send-text</b></tt>
+variable.</li>
 <li><tt>prefix</tt> &mdash; <strong>Textual representation prefix</strong>:
 A piece of text that should be prepended to <tt>text</tt>, but does not
 semantically belong to the object itself. For example, a
@@ -194,8 +195,8 @@ the request is valid, and whether the client is allowed to perform it.</p>
 <h4><tt>update</tt></h4>
 <p>Asks the server to change some client state, similarly to
 <tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>value</tt>, which
-tells what to change the variable to. Note <tt><b>success</b></tt> message is
-always sent, as well as an asynchronous event (if appliable).</p>
+tells what to change the variable to. Note that a  <tt><b>success</b></tt>
+message is always sent, as well as an asynchronous event (if applicable).</p>
 
 <h4><tt>join</tt></h4>
 <p>Tells the server the client is ready to enter chat. A modified
@@ -311,7 +312,8 @@ client's state or actions in the third person.</li>
 <li><tt>content</tt> &mdash; <strong>Raw text</strong>: The (nearly)
 unfiltered text the client has sent.</li>
 <li><tt>text</tt> &mdash; <strong>Rich text</strong>: An array of strings
-and objects providing semantic meta-information about the post content.</li>
+and objects providing the post content along with semantic
+meta-information.</li>
 <li><tt>timestamp</tt> &mdash; <strong>Timestamp</strong>: <em>See <b>Common
 Attributes</b> for explanation.</em></li>
 </ul>
@@ -326,8 +328,10 @@ Attributes</b> for explanation.</em></li>
 <tt><b>user</b></tt> mentioned.</p>
 
 <h4><tt>emph</tt></h4>
-<p>A piece of text that can be emphasized in a certain way. <tt>variant</tt>
-contains detail:</p>
+<p>A piece of text that does not carry particular semantical meaning, but
+still can be emphasized in a certain way. Most notably used in
+<tt><b>text</b></tt> members of messages. <tt>variant</tt> contains
+detail:</p>
 <ul>
 <li><tt>syspad</tt> &mdash; <strong>Server message framing</strong>:
 Characters surrounding a server message.
@@ -369,9 +373,10 @@ different parts of the line.
 <h4><tt>char</tt></h4>
 <p>A non-ASCII character encountered in a <tt><b>post</b></tt>. The
 <tt>content</tt> field is a single-character string containing the original
-value; the <tt>text</tt> holds a replacement character (<i>i.e.</i>, a
+value; the <tt>text</tt> holds a replacement character (<i>e.g.</i>, a
 <tt>?</tt>).</p>
 
     </article>
+    <hr/>
   </body>
 </html>
