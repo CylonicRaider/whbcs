@@ -8,10 +8,12 @@ tt, pre { font-family: "Courier New", monospace; }
 h1 { text-align: center; }
 p, li, aside { text-align: justify; }
 pre { background: #e0e0e0; white-space: pre-wrap; }
-h1, h2, h3, h4, h5, p, ul, pre, aside, hr { margin: 5px 0; }
+h1, h2, h3, h4, h5, p, ul, dl, pre, aside, hr { margin: 5px 0; }
 h2, h3, h4 { margin-top: 15px; }
 h5 { font-size: 1em; }
-ul { padding-left: 1em; }
+ul, dl { padding-left: 1em; }
+dt { font-weight: bold; margin-top: 5px; }
+dd { margin: 0; }
 pre { padding: 3px 0; }
 article { margin: auto; max-width: 40em; }
 aside { font-style: italic; margin: 5px 1em; }
@@ -50,17 +52,17 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 3, as of 2016-02-13</aside>
+<aside>Revision 4, as of 2016-02-14</aside>
 
 <h2>Preface</h2>
-<p><tt>WHBCS</tt> came into existence after I had a <tt>netcat</tt> chat with
+<p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
 an acquaintance, showing that such a client-less chat has both the merit of
 not having to install a client and the expense of the other's messages
 interrupting the own typing; additionally, only two people could participate
-in such a conversation. After that, I wrote up <tt>WHBCS</tt>, trying to use
-some ANSI escape codes to make others' messages appear above the own one
-being typed, indeed succeeding at that. As it got mildly popular within the
-related circles, the topic of bots was raised, which led to this API.</p>
+in such a conversation. After that, I wrote up WHBCS, trying to use some ANSI
+escape codes to make others' messages appear above the own one being typed,
+indeed succeeding at that. As it got mildly popular within the related
+circles, the topic of bots was raised, which led to this API.</p>
 
 <h2>Basics</h2>
 
@@ -88,9 +90,10 @@ discriminated by their first word:</p>
 <li><tt>WHBCS</tt> &mdash; <strong>Version advertisement</strong>: Sent by
 WHBCS as the very first line, with the version following the heading as a
 second word. Additional words may be specified in the future. The version
-this API applies to is <tt>v1.5</tt>, servers with a higher minor version
-shall behave downwards-compatibly (though such with a higher major version
-may not).</li>
+this API applies to is <tt>v1.5</tt> &mdash; <strong>which means that it is
+not implemented as of now <em>(2016-04-04)</em></strong> &mdash;, servers
+with a higher minor version shall behave downwards-compatibly (though such
+with a higher major version may not).</li>
 <li><tt>OK</tt> &mdash; <strong>Acknowledgement</strong>: Indicates a
 client-side command was successful. Further words may be specified in the
 future. A word consisting of a single number sign indicates the end of
@@ -142,17 +145,10 @@ of the object. The value is a string. Note that objects may be nested inside
 each other, so this is not limited to message types.</li>
 <li><tt>variant</tt> &mdash; <strong>Type differentiation</strong>: Indicates
 a different "sub-type", or a different role an object has. As <tt>type</tt>,
-the value is a string. E.g., the <tt>message</tt> type has the variants
-<tt>post</tt> and <tt>emote</tt>.</li>
+the value is a string. E.g., the <tt><b>post</b></tt> type has the variants
+<tt>normal</tt> and <tt>emote</tt>.</li>
 <li><tt>content</tt> &mdash; <strong>Main content</strong>: Stores, well, the
 main content of the object. Can be of an arbitrary type.</li>
-<li><tt>seq</tt> &mdash; <strong>Sequence number</strong>: An arbitrary value
-set by the client in requests; server replies to those will include it
-unmodified. Use is optional.</li>
-<li><tt>timestamp</tt> &mdash; <strong>Timestamp</strong>: A UNIX timestamp
-of when roughly the current object was constructed. The value if a
-floating-point number; while the unit is a second, more precision may be
-available.</li>
 <li><tt>text</tt> &mdash; <strong>Textual representation</strong>: The
 server's preferred way of presenting the given object, as used for terminal
 clients. May be absent, indicating the server does not honor this object with
@@ -160,7 +156,25 @@ a textual representation. The value may be a string, or an array of strings
 and/or nested objects, which can have <tt>text</tt> fields as well. Objects
 without <tt>text</tt> fields are provided as context and would not be
 rendered into text by the server itself. The emission of <tt>text</tt> fields
-might be configurable in the future (to save bandwidth).</p>
+might be configurable in the future (to save bandwidth).</li>
+<li><tt>prefix</tt> &mdash; <strong>Textual representation prefix</strong>:
+A piece of text that should be prepended to <tt>text</tt>, but does not
+semantically belong to the object itself. For example, a
+<tt><b>mention</b></tt> object would have a prefix containing the sigil
+character that introduced the mention.</li>
+<li><tt>postfix</tt> &mdash; <strong>Textual representation postfix</strong>:
+The equivalent of <tt>prefix</tt> that should be appended to the
+<tt>text</tt>.</li>
+</ul>
+<p>The following fields apply mostly to top-level messages:</p>
+<ul>
+<li><tt>seq</tt> &mdash; <strong>Sequence number</strong>: An arbitrary value
+set by the client in requests; server replies to those will include it
+unmodified. Use is optional.</li>
+<li><tt>timestamp</tt> &mdash; <strong>Timestamp</strong>: A UNIX timestamp
+of when roughly the current object was constructed. The value if a
+floating-point number; while the unit is a second, more precision may be
+available.</li>
 </ul>
 
 <h3>Client commands</h3>
@@ -180,7 +194,8 @@ the request is valid, and whether the client is allowed to perform it.</p>
 <h4><tt>update</tt></h4>
 <p>Asks the server to change some client state, similarly to
 <tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>value</tt>, which
-tells what to change the variable to.</p>
+tells what to change the variable to. Note <tt><b>success</b></tt> message is
+always sent, as well as an asynchronous event (if appliable).</p>
 
 <h4><tt>join</tt></h4>
 <p>Tells the server the client is ready to enter chat. A modified
@@ -232,6 +247,12 @@ object containing details about the newly-joined participant.</p>
 the client disconnected "properly" (<i>i.e.</i>, by a <tt><b>leave</b></tt>
 or a <tt><b>quit</b></tt>) or not, respectively.</p>
 
+<h4><tt>renamed</tt></h4>
+<p>A client changed their nickname. The <tt>from</tt> field is a
+<tt><b>user</b></tt> object representing the old nickname (with a
+<tt>variant</tt> of <tt>old</tt>), the <tt>to</tt> field contains the new
+(and therefore current) <tt><b>user</b></tt> object.</p>
+
 <h4><tt>chat</tt></h4>
 <p>A chat message was posted. <tt>content</tt> contains a
 <tt><b>post</b></tt> representing the chat message.</p>
@@ -241,9 +262,116 @@ or a <tt><b>quit</b></tt>) or not, respectively.</p>
 more details.</p>
 
 <h3>In-message data types</h3>
-<p>&mdash; <em>To be added</em> &mdash;</p>
+
+<h4><tt>variable</tt></h4>
+<p>A piece of information about a client. Fields:</p>
+<ul>
+<li><tt>name</tt> &mdash; <strong>Variable name</strong>: Indicates which
+variable is exactly meant.</li>
+<li><tt>value</tt> &mdash; <strong>Variable value</strong>: Contains the
+value the variable has. May be missing in queries.</li>
+<li><tt>id</tt> &mdash; <strong>Client identifier</strong>: Indicates which
+client the variable refers to. The current client is implicitly assumed if
+missing.</li>
+</ul>
+<p>Currently defined variables are:</p>
+<ul>
+<li><tt>id</tt> &mdash; <strong>Identifier</strong> <em>(read-only)</em>:
+An opaque primitive value uniquely identifying a client. Currently an
+integer, but might be a string as well. May be re-used after a client exits
+or server restarts. May also be missing if the client is not explicitly
+idenfitied (such as inside <tt><b>mention</b></tt>-s).</li>
+<li><tt>nick</tt> &mdash; <strong>Nickname</strong>: A string the client
+chose as the nickname for themself.</li>
+<li><tt>send-text</tt> &mdash; <strong>Send <tt>text</tt> fields</strong>
+<em>(private)</em>: Informs the server whether it should format and send
+<tt><b>text</b></tt> fields to the client, or if the latter will disregard
+them. Can be used to save bandwidth.</li>
+</ul>
+<p>...where annotations mean:</p>
+<dl>
+<dt>read-only</dt>
+<dd>Cannot be <tt><b>update</b></tt>-d.</dd>
+<dt>private</dt>
+<dd>Only the own value can be queried/modified.</dd>
+</dl>
+
+<h4><tt>post</tt></h4>
+<p>An individual chat message. <tt>variant</tt> may be:</p>
+<ul>
+<li><tt>normal</tt> &mdash; <strong>Normal post</strong>: Semantically
+equals the client "saying" something.</li>
+<li><tt>emote</tt> &mdash; <strong>Emote message</strong>: Describes the
+client's state or actions in the third person.</li>
+</ul>
+<p>Field assignments are:</p>
+<ul>
+<li><tt>sender</tt> &mdash; <strong>Post origin</strong>: The
+<tt><b>user</b></tt> the message came from.</li>
+<li><tt>content</tt> &mdash; <strong>Raw text</strong>: The (nearly)
+unfiltered text the client has sent.</li>
+<li><tt>text</tt> &mdash; <strong>Rich text</strong>: An array of strings
+and objects providing semantic meta-information about the post content.</li>
+<li><tt>timestamp</tt> &mdash; <strong>Timestamp</strong>: <em>See <b>Common
+Attributes</b> for explanation.</em></li>
+</ul>
+
+<h4><tt>user</tt></h4>
+<p>An individual chat participant. Extra fields are <tt>id</tt> and
+<tt>nick</tt>, see <tt><b>variable</b></tt> for definitions.</p>
+
+<h4><tt>mention</tt></h4>
+<p>An <tt>@</tt>-mention of a client. Appears inside the <tt>text</tt> of
+<tt><b>post</b></tt>-s. The <tt>content</tt> field identifies the
+<tt><b>user</b></tt> mentioned.</p>
+
+<h4><tt>emph</tt></h4>
+<p>A piece of text that can be emphasized in a certain way. <tt>variant</tt>
+contains detail:</p>
+<ul>
+<li><tt>syspad</tt> &mdash; <strong>Server message framing</strong>:
+Characters surrounding a server message.
+<pre>
+<mark>***</mark> Server will shut down now.
+</pre></li>
+<li><tt>sysmsg</tt> &mdash; <strong>Server message</strong>: A message from
+the server for users' information.
+<pre>
+*** <mark>Server will shut down now.</mark>
+</pre></li>
+<li><tt>msgpad</tt> &mdash; <strong>Chat message padding</strong>: Characters
+surrounding a "normal" chat message.
+<pre>
+<mark>*</mark> <i>Gary</i> is now <i>Fred</i>
+</pre></li>
+<li><tt>msgtxt</tt> &mdash; <strong>Chat message text</strong>: Actual
+content of an in-chat message.
+<pre>
+* <mark><i>Gary</i> is now <i>Fred</i></mark>
+</pre></li>
+<li><tt>msgerr</tt> &mdash; <strong>Chat error message</strong>: A message
+indicating a bad condition.
+<pre>
+* <mark><i>Alice</i> left unexpectedly</mark>
+</pre></li>
+<li><tt>chatpad</tt> &mdash; <strong>Chat padding</strong>: Characters
+surrounding various parts of a chat post.
+<pre>
+<mark>&lt;</mark>Fred<mark>&gt;</mark> Hello!
+</pre></li>
+<li><tt>spc</tt> &mdash; <strong>Space</strong>: Characters used to separate
+different parts of the line.
+<pre>
+&lt;Fred&gt;<mark> </mark>Hello!
+</pre></li>
+</ul>
+
+<h4><tt>char</tt></h4>
+<p>A non-ASCII character encountered in a <tt><b>post</b></tt>. The
+<tt>content</tt> field is a single-character string containing the original
+value; the <tt>text</tt> holds a replacement character (<i>i.e.</i>, a
+<tt>?</tt>).</p>
 
     </article>
-    <hr/>
   </body>
 </html>
