@@ -11,16 +11,22 @@ pre { background: #e0e0e0; white-space: pre-wrap; }
 h1, h2, h3, h4, h5, p, ul, dl, pre, aside, hr { margin: 5px 0; }
 h2, h3, h4 { margin-top: 15px; }
 h5 { font-size: 1em; }
-ul, dl { padding-left: 1em; }
+ul, dl { padding-left: 0; }
 dt { font-weight: bold; margin-top: 5px; }
 dd { margin: 0; }
 pre { padding: 3px 0; }
-article { margin: auto; max-width: 40em; }
+article { margin: auto; max-width: 46em; }
 aside { font-style: italic; margin: 5px 1em; }
 aside:first-child { margin: 5px 0; }
 aside > h5:first-child { display: inline; font-style: normal; }
 /* Fancy headline counting */
+article { padding-left: 3em; padding-right: 3em; }
 h2::before, h3::before, h4::before {
+  display: inline-block;
+  width: 2.5rem;
+  margin-left: -3rem;
+  margin-right: 0.5rem;
+  text-align: right;
   font-size: 1rem;
   font-weight: normal;
   color: #808080;
@@ -45,6 +51,20 @@ h3 {
 h4::before {
   content: counter(h2ctr) "." counter(h3ctr) "." counter(h4ctr) ". ";
   counter-increment: h4ctr;
+}
+/* Small screen tweaks */
+@media (max-width: 40em) {
+  h2::before, h3::before, h4::before {
+    display: inline;
+    margin-left: 0;
+  }
+  article {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  ul {
+    list-style-position: inside;
+  }
 }
     </style>
   </head>
