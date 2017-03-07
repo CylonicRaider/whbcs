@@ -30,8 +30,12 @@ class ClientHandler:
         self.server._add_handler(self)
 
     def close(self):
+        self.log('CLOSING id=%r' % self.id)
         self.server._remove_handler(self)
         self.socket.close()
+
+    def log(self, *args):
+        if self.logger: self.logger.info(*args)
 
     def __call__(self):
         self.close()
@@ -40,7 +44,7 @@ class Server:
     @classmethod
     def listen(cls, addr, logger=None):
         if logger:
-            logger.info('LISTENING bind=%s:%s' % addr)
+            logger.info('LISTENING bind=%r' % (addr,))
         s = socket.socket()
         s.bind(addr)
         s.listen(5)
@@ -77,7 +81,7 @@ class Server:
             cid = self._next_connid
             self._next_connid += 1
             self.log('CONNECTION id=%r from=%r' % (cid, addr))
-            spawn_thread(ClientHandler(self, cid, conn, addr, logger))
+            spawn_thread(ClientHandler(self, cid, conn, addr, self.logger))
             conn, addr = None, None
 
 def main():
@@ -92,7 +96,7 @@ def main():
     # Parse arguments
     host, port, logfile = HOST, PORT, None
     try:
-        it = iter(sys.argv)
+        it = iter(sys.argv[1:])
         for arg in it:
             if arg == '--help':
                 die('USAGE: %s [--help] [--host host] [--port port] '
@@ -121,7 +125,7 @@ def main():
     logging.info(APPNAME + ' ' + VERSION)
     s = Server.listen((host, port), logging.getLogger())
     try:
-        s.main()
+        s()
     except KeyboardInterrupt:
         pass
     finally:
