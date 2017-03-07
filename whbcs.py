@@ -7,11 +7,18 @@ APPNAME = 'WHBCS'
 VERSION = '2.0-pre'
 
 import sys, os, socket
+import threading
 import signal
 import logging
 
 HOST = ''
 PORT = 4321
+
+def spawn_thread(func, *args, **kwds):
+    thr = threading.Thread(target=func, args=args, kwargs=kwds)
+    thr.setDaemon(True)
+    thr.start()
+    return thr
 
 class ClientHandler:
     def __init__(self, server, id, sock, addr, logger=None):
@@ -20,6 +27,14 @@ class ClientHandler:
         self.socket = sock
         self.addr = addr
         self.logger = logger
+        self.server._add_handler(self)
+
+    def close(self):
+        self.server._remove_handler(self)
+        self.socket.close()
+
+    def __call__(self):
+        self.close()
 
 class Server:
     @classmethod
@@ -35,13 +50,26 @@ class Server:
         self.socket = socket
         self.logger = logger
         self._next_connid = 0
+        self.lock = threading.RLock()
+        self.handlers = []
 
     def close(self):
         self.log('CLOSING')
         self.socket.close()
+        with self.lock:
+            hl = list(self.handlers)
+        for h in hl: h.close()
 
     def log(self, *args):
         if self.logger: self.logger.info(*args)
+
+    def _add_handler(self, hnd):
+        with self.lock:
+            self.handlers.append(hnd)
+
+    def _remove_handler(self, hnd):
+        with self.lock:
+            self.handlers.remove(hnd)
 
     def __call__(self):
         while 1:
