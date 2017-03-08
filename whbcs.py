@@ -13,6 +13,7 @@ import logging
 
 HOST = ''
 PORT = 4321
+REUSE_ADDR = True
 
 def spawn_thread(func, *args, **kwds):
     thr = threading.Thread(target=func, args=args, kwargs=kwds)
@@ -42,10 +43,12 @@ class ClientHandler:
 
 class Server:
     @classmethod
-    def listen(cls, addr, logger=None):
+    def listen(cls, addr, logger=None, reuse_addr=False):
         if logger:
             logger.info('LISTENING bind=%r' % (addr,))
         s = socket.socket()
+        if reuse_addr:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(addr)
         s.listen(5)
         return cls(s, logger)
@@ -94,19 +97,26 @@ def main():
     def interrupt(signo, frame):
         raise KeyboardInterrupt
     # Parse arguments
-    host, port, logfile = HOST, PORT, None
+    host, port, reuse_addr, logfile = HOST, PORT, REUSE_ADDR, None
     try:
         it = iter(sys.argv[1:])
         for arg in it:
             if arg == '--help':
                 die('USAGE: %s [--help] [--host host] [--port port] '
-                    '[--logfile logfile]\n' % sys.argv[0], 0)
+                    '[--[no-]reuseaddr] [--logfile logfile]\n'
+                    'Defaults: --host %r --port %s --%sreuseaddr\n' % (
+                        sys.argv[0], HOST, PORT,
+                        '' if REUSE_ADDR else 'no-'), 0)
             elif arg == '--host':
                 host = next(it)
             elif arg == '--port':
                 port = int(next(it))
             elif arg == '--logfile':
                 logfile = next(it)
+            elif arg == '--reuseaddr':
+                reuse_addr = True
+            elif arg == '--no-reuseaddr':
+                reuse_addr = False
             else:
                 die('ERROR: Unrecognized argument %r\n' % arg)
     except StopIteration:
@@ -123,7 +133,7 @@ def main():
     signal.signal(signal.SIGTERM, interrupt)
     # Run server
     logging.info(APPNAME + ' ' + VERSION)
-    s = Server.listen((host, port), logging.getLogger())
+    s = Server.listen((host, port), logging.getLogger(), reuse_addr)
     try:
         s()
     except KeyboardInterrupt:
