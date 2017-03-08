@@ -21,6 +21,26 @@ def spawn_thread(func, *args, **kwds):
     thr.start()
     return thr
 
+class ClientProcessor:
+    def __init__(self, handler):
+        self.handler = handler
+
+    def encode(self, message):
+        raise NotImplementedError
+
+    def handle(self, line):
+        raise NotImplementedError
+
+class DoorstepClientProcessor(ClientProcessor):
+    pass
+
+class ChatDistributor:
+    def __init__(self, server):
+        self.server = server
+
+    def handle(self, connid, message):
+        pass
+
 class ClientHandler:
     def __init__(self, server, id, sock, addr, logger=None):
         self.server = server
@@ -28,18 +48,38 @@ class ClientHandler:
         self.socket = sock
         self.addr = addr
         self.logger = logger
+        self.file = sock.makefile('rwb')
+        self.processor = DoorstepClientProcessor(self)
         self.server._add_handler(self)
+
+    def send(self, message):
+        self.file.write(self.processor.encode(message))
+        self.file.flush()
 
     def close(self):
         self.log('CLOSING id=%r' % self.id)
         self.server._remove_handler(self)
-        self.socket.close()
+        try:
+            self.processor.handle(None)
+        finally:
+            self.file.close()
+            self.socket.shutdown(socket.SHUT_RDWR)
+            self.socket.close()
 
     def log(self, *args):
         if self.logger: self.logger.info(*args)
 
     def __call__(self):
-        self.close()
+        try:
+            while 1:
+                l = self.file.readline()
+                if not l: break
+                self.processor.handle(l)
+        finally:
+            try:
+                self.close()
+            except IOError:
+                pass
 
 class Server:
     @classmethod
@@ -58,14 +98,27 @@ class Server:
         self.logger = logger
         self._next_connid = 0
         self.lock = threading.RLock()
+        self.distributor = ChatDistributor(self)
         self.handlers = []
+
+    # Process a message (as a "live" data structure) from the given client.
+    def handle(self, id, message):
+        self.distributor.handle(id, message)
+
+    # Broadcast a message (given as a "live" data structure) to all clients.
+    def broadcast(self, message):
+        with self.lock:
+            hl = list(self.handler)
+        for h in hl:
+            hl.send(message)
 
     def close(self):
         self.log('CLOSING')
         self.socket.close()
         with self.lock:
             hl = list(self.handlers)
-        for h in hl: h.close()
+        for h in hl:
+            h.close()
 
     def log(self, *args):
         if self.logger: self.logger.info(*args)
