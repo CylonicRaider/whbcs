@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 6, as of 2017-03-07</aside>
+<aside>Revision 7, as of 2017-03-08</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -95,6 +95,10 @@ below, but should be aware that not all clients may receive it properly.</p>
 <p>As far as this API is concerned, communication is always line-based; lines
 are terminated with the line feed (<tt>\x0A</tt>) character; leading and
 trailing whitespace should be ignored.</p>
+<p>In doorstep mode (defined below), the connection is synchronous; in
+API mode, is becomes full-duplex. <small>(There are half-duplex modes of
+direct communications with the user; they are out of the scope of this
+API.)</small>
 
 <h3>Initial handshake</h3>
 <p>Initially, the connection is in <em>doorstep mode</em>; the server,
@@ -129,15 +133,17 @@ The syntax is again similar to <tt>OK</tt>.</li>
 <h4>Client lines</h4>
 <p>For continuity with in-chat commands, client-side lines begin with a slash
 (<tt>/</tt>) character. Of the commands, only <tt>/api</tt> is relevant to
-API clients; it switches the connection into API mode. Replies to "legacy"
-commands &mdash; including <tt>/api</tt> &mdash; are sent in the format
-described in the section above.</p>
+API clients; it switches the connection into API mode. The reply to the
+<tt>/api</tt> command is still sent in the mode described above (<i>i.e.</i>,
+it is an <tt>OK</tt> or <tt>FAIL</tt> line); all further messages from the
+server &mdash; including replies to "legacy" commands &mdash; are sent in the
+format elaborated below.</p>
 <p>Other notable commands include <tt>/ping</tt>, which results in the server
 sending a <tt>PONG</tt> reply, and <tt>/quit</tt>, which lets WHBCS terminate
 the connection (after performing some clean-up, which is not necessary in API
-mode); a list (with terse descriptions; <small>not including the
-<tt>/api</tt> command</small>) can be obtained by using the <tt>/help</tt>
-command interactively.</p>
+mode); a non-machine-readable list <small>(not including the <tt>/api</tt>
+command)</small> can be obtained by using the <tt>/help</tt> command
+interactively.</p>
 
 <h3>API mode format</h3>
 <p>In API mode, the commands mentioned earlier are complemented by <em>JSON
@@ -200,7 +206,10 @@ available.</li>
 </ul>
 
 <h3>Client commands</h3>
-<p>The section titles list the <tt>type</tt> attributes to set.</p>
+<p>The section titles list the <tt>type</tt> attributes to set. "Modified"
+asynchronous events &mdash; which are frequently sent as replies &mdash; are
+distinguished by containing the sequence number of the corresponding request
+(if any).</p>
 
 <h4><tt>ping</tt></h4>
 <p>Lets the server return a <tt>pong</tt> message. Can be used to probe
@@ -216,13 +225,13 @@ the request is valid, and whether the client is allowed to perform it.</p>
 <h4><tt>update</tt></h4>
 <p>Asks the server to change some client state, similarly to
 <tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>value</tt>, which
-tells what to change the variable to. Note that a  <tt><b>success</b></tt>
-message is always sent, as well as an asynchronous event (if applicable).</p>
+tells what to change the variable to. The reply is a modified
+<tt><b>updated</b></tt> message in case of success, or a regular
+<tt><b>failure</b></tt>.</p>
 
 <h4><tt>join</tt></h4>
 <p>Tells the server the client is ready to enter chat. A modified
-<tt><b>joined</b></tt> is sent to the client as confirmation (instead of a
-<tt><b>success</b></tt>).</p>
+<tt><b>joined</b></tt> is sent to the client as confirmation.</p>
 
 <h4><tt>leave</tt></h4>
 <p>Tells the server that the client wants to leave chat again. A modified
@@ -232,9 +241,8 @@ message is always sent, as well as an asynchronous event (if applicable).</p>
 <p>Sends a chat message. <tt>content</tt> is a <tt><b>post</b></tt>
 specifying what exactly to send. The <tt><b>post</b></tt>'s
 <tt>content</tt> may be a plain string, letting the server interpret it, and
-is in fact currently required to be like that. Instead of a
-<tt><b>success</b></tt>, the server replies with a special
-<tt><b>chat</b></tt> including the command's sequence number.</p>
+is in fact currently required to be like that. The server replies with a
+modified <tt><b>chat</b></tt>.</p>
 
 <h4><tt>quit</tt></h4>
 <p>Tells the server to remove the client from chat (if there) and to close
@@ -256,7 +264,14 @@ data.</p>
 
 <h3>Asynchronous events</h3>
 <p>These messages are sent by the server when events of interest to clients
-happen.</p>
+happen. In each case, the <tt>text</tt> field of the message contains &mdash;
+as noted above &mdash; a rich-text representation of the event if the server
+deems one appropriate.</p>
+
+<h4><tt>updated</tt></h4>
+<p>A client changed a public variable about themself. The <tt>from</tt>
+field contains a <tt><b>variable</b></tt> denoting the state before the
+change, the <tt>content</tt> field the one after it.</p>
 
 <h4><tt>joined</tt></h4>
 <p>A client joined the room. <tt>content</tt> is a <tt><b>user</b></tt>
@@ -268,12 +283,6 @@ object containing details about the newly-joined participant.</p>
 <tt>variant</tt> may be <tt>normal</tt> or <tt>abrupt</tt>, denoting whether
 the client disconnected "properly" (<i>i.e.</i>, by a <tt><b>leave</b></tt>
 or a <tt><b>quit</b></tt>) or not, respectively.</p>
-
-<h4><tt>renamed</tt></h4>
-<p>A client changed their nickname. The <tt>from</tt> field is a
-<tt><b>user</b></tt> object representing the old nickname (with a
-<tt>variant</tt> of <tt>old</tt>), the <tt>to</tt> field contains the new
-(and therefore current) <tt><b>user</b></tt> object.</p>
 
 <h4><tt>chat</tt></h4>
 <p>A chat message was posted. <tt>content</tt> contains a
@@ -303,8 +312,8 @@ requests), or the client is not explicitly identified (such as inside
 <ul>
 <li><tt>nick</tt> &mdash; <strong>Nickname</strong>: A string the client
 chose as the nickname for themself.</li>
-<li><tt>term</tt> &mdash; <strong>Terminal type</strong>: The terminal of the
-client. Of little use to API clients.</li>
+<li><tt>term</tt> &mdash; <strong>Terminal type</strong> <em>(private)</em>:
+The terminal of the client. Of little use to API clients.</li>
 <li><tt>send-text</tt> &mdash; <strong>Send <tt>text</tt> fields</strong>
 <em>(private)</em>: Informs the server whether it should format and send
 <tt><b>text</b></tt> fields to the client, or if the latter will disregard
