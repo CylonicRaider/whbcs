@@ -21,66 +21,6 @@ def spawn_thread(func, *args, **kwds):
     thr.start()
     return thr
 
-class ClientProcessor:
-    def __init__(self, handler):
-        self.handler = handler
-
-    def encode(self, message):
-        raise NotImplementedError
-
-    def handle(self, line):
-        raise NotImplementedError
-
-class DoorstepClientProcessor(ClientProcessor):
-    pass
-
-class ChatDistributor:
-    def __init__(self, server):
-        self.server = server
-
-    def handle(self, connid, message):
-        pass
-
-class ClientHandler:
-    def __init__(self, server, id, sock, addr, logger=None):
-        self.server = server
-        self.id = id
-        self.socket = sock
-        self.addr = addr
-        self.logger = logger
-        self.file = sock.makefile('rwb')
-        self.processor = DoorstepClientProcessor(self)
-        self.server._add_handler(self)
-
-    def send(self, message):
-        self.file.write(self.processor.encode(message))
-        self.file.flush()
-
-    def close(self):
-        self.log('CLOSING id=%r' % self.id)
-        self.server._remove_handler(self)
-        try:
-            self.processor.handle(None)
-        finally:
-            self.file.close()
-            self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
-
-    def log(self, *args):
-        if self.logger: self.logger.info(*args)
-
-    def __call__(self):
-        try:
-            while 1:
-                l = self.file.readline()
-                if not l: break
-                self.processor.handle(l)
-        finally:
-            try:
-                self.close()
-            except IOError:
-                pass
-
 class Server:
     @classmethod
     def listen(cls, addr, logger=None, reuse_addr=False):
@@ -139,6 +79,66 @@ class Server:
             self.log('CONNECTION id=%r from=%r' % (cid, addr))
             spawn_thread(ClientHandler(self, cid, conn, addr, self.logger))
             conn, addr = None, None
+
+class ClientHandler:
+    def __init__(self, server, id, sock, addr, logger=None):
+        self.server = server
+        self.id = id
+        self.socket = sock
+        self.addr = addr
+        self.logger = logger
+        self.file = sock.makefile('rwb')
+        self.processor = DoorstepClientProcessor(self)
+        self.server._add_handler(self)
+
+    def send(self, message):
+        self.file.write(self.processor.encode(message))
+        self.file.flush()
+
+    def close(self):
+        self.log('CLOSING id=%r' % self.id)
+        self.server._remove_handler(self)
+        try:
+            self.processor.handle(None)
+        finally:
+            self.file.close()
+            self.socket.shutdown(socket.SHUT_RDWR)
+            self.socket.close()
+
+    def log(self, *args):
+        if self.logger: self.logger.info(*args)
+
+    def __call__(self):
+        try:
+            while 1:
+                l = self.file.readline()
+                if not l: break
+                self.processor.handle(l)
+        finally:
+            try:
+                self.close()
+            except IOError:
+                pass
+
+class ChatDistributor:
+    def __init__(self, server):
+        self.server = server
+
+    def handle(self, connid, message):
+        pass
+
+class ClientProcessor:
+    def __init__(self, handler):
+        self.handler = handler
+
+    def encode(self, message):
+        raise NotImplementedError
+
+    def handle(self, line):
+        raise NotImplementedError
+
+class DoorstepClientProcessor(ClientProcessor):
+    pass
 
 def main():
     # Interrupt execution
