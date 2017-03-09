@@ -35,7 +35,7 @@ class Token(str):
         while 1:
             m = pattern.search(string, pos)
             if not m: break
-            ret.append(cls(m.group(), m.begin()))
+            ret.append(cls(m.group(), m.start()))
             pos = m.end()
         return ret
 
@@ -188,14 +188,16 @@ class LineBasedClientHandler(ClientHandler):
             ln = self.endpoint.file.readline()
             return ln.decode(self.encoding, errors=self.errors)
     def readline_words(self):
-        return Token.extract(self.readline())
+        ln = self.readline()
+        if not ln: return None
+        return Token.extract(ln)
 
     def println(self, *args, **kwds):
         s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
         d = s.encode(self.encoding, errors=self.errors)
         with self.olock:
-            self.file.write(d)
-            self.file.flush()
+            self.endpoint.file.write(d)
+            self.endpoint.file.flush()
 
 class DoorstepClientHandler(LineBasedClientHandler):
     def init(self, first):
@@ -208,8 +210,11 @@ class DoorstepClientHandler(LineBasedClientHandler):
     def __call__(self):
         while 1:
             tokens = self.readline_words()
-            if not tokens: continue
-            if tokens[0] == '/quit':
+            if tokens is None:
+                return True
+            elif not tokens:
+                pass
+            elif tokens[0] == '/quit':
                 return True
             elif tokens[0] == '/help':
                 self.println('# NYI')
