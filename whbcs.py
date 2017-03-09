@@ -15,6 +15,11 @@ HOST = ''
 PORT = 4321
 REUSE_ADDR = True
 
+GREETING = '''
+# Weird HomeBrew Chat Server v%s
+# Type "/help" for a command overview.
+'''[1:-1]
+
 # Spawn a new daemonic thread.
 def spawn_thread(func, *args, **kwds):
     thr = threading.Thread(target=func, args=args, kwargs=kwds)
@@ -159,13 +164,13 @@ class ClientHandler:
         self.endpoint = endpoint
 
     def init(self, first):
-        raise NotImplementedError
+        pass
 
     def send(self, message):
         raise NotImplementedError
 
     def quit(self, last):
-        raise NotImplementedError
+        pass
 
     def __call__(self):
         raise NotImplementedError
@@ -193,7 +198,23 @@ class LineBasedClientHandler(ClientHandler):
             self.file.flush()
 
 class DoorstepClientHandler(LineBasedClientHandler):
-    pass
+    def init(self, first):
+        if first: self.println(APPNAME, 'v' + VERSION)
+        self.println(GREETING % VERSION)
+
+    def send(self, message):
+        pass
+
+    def __call__(self):
+        while 1:
+            tokens = self.readline_words()
+            if not tokens: continue
+            if tokens[0] == '/quit':
+                return True
+            elif tokens[0] == '/help':
+                self.println('# NYI')
+            else:
+                self.println('FAIL', '#', 'Unknown command.')
 
 def main():
     # Interrupt execution
