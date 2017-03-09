@@ -6,7 +6,7 @@
 APPNAME = 'WHBCS'
 VERSION = '2.0-pre'
 
-import sys, os, socket
+import sys, os, re, socket
 import threading
 import signal
 import logging
@@ -21,6 +21,27 @@ def spawn_thread(func, *args, **kwds):
     thr.setDaemon(True)
     thr.start()
     return thr
+
+# A string with an integer telling its position within another string.
+class Token(str):
+    @classmethod
+    def extract(cls, string, word=r'\S+'):
+        pattern, pos, ret = re.compile(word), 0, []
+        while 1:
+            m = pattern.search(string, pos)
+            if not m: break
+            ret.append(cls(m.group(), m.begin()))
+            pos = m.end()
+        return ret
+
+    def __new__(cls, obj, offset):
+        inst = str.__new__(cls, obj)
+        inst.offset = offset
+        return inst
+
+    def __repr__(self):
+        return '%s(%s, %r)' % (self.__class__.__name__, str.__repr__(self),
+                               self.offset)
 
 class Server:
     class Endpoint:
@@ -161,6 +182,8 @@ class LineBasedClientHandler(ClientHandler):
         with self.ilock:
             ln = self.endpoint.file.readline()
             return ln.decode(self.encoding, errors=self.errors)
+    def readline_words(self):
+        return Token.extract(self.readline())
 
     def println(self, *args, **kwds):
         s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
