@@ -33,6 +33,11 @@ class Server:
             self.handler = DoorstepClientHandler(self)
             self.server._add_endpoint(self)
 
+        def swap_handler(self, hnd):
+            self.handler.quit(False)
+            self.handler = hnd
+            self.handler.init(False)
+
         def send(self, message):
             self.file.write(self.handler.encode(message))
             self.file.flush()
@@ -41,7 +46,7 @@ class Server:
             self.log('CLOSING id=%r' % self.id)
             self.server._remove_endpoint(self)
             try:
-                self.handler.handle(None)
+                self.handler.quit(True)
             finally:
                 self.file.close()
                 self.socket.shutdown(socket.SHUT_RDWR)
@@ -52,6 +57,7 @@ class Server:
 
         def __call__(self):
             try:
+                self.handler.init(True)
                 while 1:
                     l = self.file.readline()
                     if not l: break
@@ -131,10 +137,16 @@ class ClientHandler:
     def __init__(self, endpoint):
         self.endpoint = endpoint
 
+    def init(self, first):
+        raise NotImplementedError
+
     def encode(self, message):
         raise NotImplementedError
 
     def handle(self, line):
+        raise NotImplementedError
+
+    def quit(self, last):
         raise NotImplementedError
 
 class DoorstepClientHandler(ClientHandler):
