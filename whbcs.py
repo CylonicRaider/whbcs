@@ -15,6 +15,7 @@ HOST = ''
 PORT = 4321
 REUSE_ADDR = True
 
+# Spawn a new daemonic thread.
 def spawn_thread(func, *args, **kwds):
     thr = threading.Thread(target=func, args=args, kwargs=kwds)
     thr.setDaemon(True)
@@ -39,8 +40,7 @@ class Server:
             self.handler.init(False)
 
         def send(self, message):
-            self.file.write(self.handler.encode(message))
-            self.file.flush()
+            self.handler.send(message)
 
         def close(self):
             self.log('CLOSING id=%r' % self.id)
@@ -59,9 +59,8 @@ class Server:
             try:
                 self.handler.init(True)
                 while 1:
-                    l = self.file.readline()
-                    if not l: break
-                    self.handler.handle(l)
+                    if self.handler():
+                        break
             finally:
                 try:
                     self.close()
@@ -84,8 +83,8 @@ class Server:
         self.logger = logger
         self._next_connid = 0
         self.lock = threading.RLock()
-        self.distributor = ChatDistributor(self)
         self.endpoints = []
+        self.distributor = ChatDistributor(self)
 
     # Process a message (as a "live" data structure) from the given client.
     def handle(self, id, message):
@@ -94,20 +93,21 @@ class Server:
     # Broadcast a message (given as a "live" data structure) to all clients.
     def broadcast(self, message):
         with self.lock:
-            hl = list(self.endpoints)
-        for h in hl:
-            hl.send(message)
+            es = list(self.endpoints)
+        for e in es:
+            e.send(message)
 
     def close(self):
         self.log('CLOSING')
         self.socket.close()
         with self.lock:
-            hl = list(self.endpoints)
-        for h in hl:
-            h.close()
+            es = list(self.endpoints)
+        for e in es:
+            e.close()
 
     def log(self, *args):
-        if self.logger: self.logger.info(*args)
+        if self.logger:
+            self.logger.info(*args)
 
     def _add_endpoint(self, hnd):
         with self.lock:
@@ -140,16 +140,36 @@ class ClientHandler:
     def init(self, first):
         raise NotImplementedError
 
-    def encode(self, message):
-        raise NotImplementedError
-
-    def handle(self, line):
+    def send(self, message):
         raise NotImplementedError
 
     def quit(self, last):
         raise NotImplementedError
 
-class DoorstepClientHandler(ClientHandler):
+    def __call__(self):
+        raise NotImplementedError
+
+class LineBasedClientHandler(ClientHandler):
+    def __init__(self, endpoint):
+        ClientHandler.__init__(self, endpoint)
+        self.ilock = threading.RLock()
+        self.olock = threading.RLock()
+        self.encoding = 'ascii'
+        self.errors = 'replace'
+
+    def readline(self):
+        with self.ilock:
+            ln = self.endpoint.file.readline()
+            return ln.decode(self.encoding, errors=self.errors)
+
+    def println(self, *args, **kwds):
+        s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
+        d = s.encode(self.encoding, errors=self.errors)
+        with self.olock:
+            self.file.write(d)
+            self.file.flush()
+
+class DoorstepClientHandler(LineBasedClientHandler):
     pass
 
 def main():
