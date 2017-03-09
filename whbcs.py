@@ -22,6 +22,46 @@ def spawn_thread(func, *args, **kwds):
     return thr
 
 class Server:
+    class Endpoint:
+        def __init__(self, server, id, sock, addr, logger=None):
+            self.server = server
+            self.id = id
+            self.socket = sock
+            self.addr = addr
+            self.logger = logger
+            self.file = sock.makefile('rwb')
+            self.handler = DoorstepClientHandler(self)
+            self.server._add_endpoint(self)
+
+        def send(self, message):
+            self.file.write(self.handler.encode(message))
+            self.file.flush()
+
+        def close(self):
+            self.log('CLOSING id=%r' % self.id)
+            self.server._remove_endpoint(self)
+            try:
+                self.handler.handle(None)
+            finally:
+                self.file.close()
+                self.socket.shutdown(socket.SHUT_RDWR)
+                self.socket.close()
+
+        def log(self, *args):
+            if self.logger: self.logger.info(*args)
+
+        def __call__(self):
+            try:
+                while 1:
+                    l = self.file.readline()
+                    if not l: break
+                    self.handler.handle(l)
+            finally:
+                try:
+                    self.close()
+                except IOError:
+                    pass
+
     @classmethod
     def listen(cls, addr, logger=None, reuse_addr=False):
         if logger:
@@ -39,7 +79,7 @@ class Server:
         self._next_connid = 0
         self.lock = threading.RLock()
         self.distributor = ChatDistributor(self)
-        self.handlers = []
+        self.endpoints = []
 
     # Process a message (as a "live" data structure) from the given client.
     def handle(self, id, message):
@@ -48,7 +88,7 @@ class Server:
     # Broadcast a message (given as a "live" data structure) to all clients.
     def broadcast(self, message):
         with self.lock:
-            hl = list(self.handler)
+            hl = list(self.endpoints)
         for h in hl:
             hl.send(message)
 
@@ -56,20 +96,20 @@ class Server:
         self.log('CLOSING')
         self.socket.close()
         with self.lock:
-            hl = list(self.handlers)
+            hl = list(self.endpoints)
         for h in hl:
             h.close()
 
     def log(self, *args):
         if self.logger: self.logger.info(*args)
 
-    def _add_handler(self, hnd):
+    def _add_endpoint(self, hnd):
         with self.lock:
-            self.handlers.append(hnd)
+            self.endpoints.append(hnd)
 
-    def _remove_handler(self, hnd):
+    def _remove_endpoint(self, hnd):
         with self.lock:
-            self.handlers.remove(hnd)
+            self.endpoints.remove(hnd)
 
     def __call__(self):
         while 1:
@@ -77,48 +117,8 @@ class Server:
             cid = self._next_connid
             self._next_connid += 1
             self.log('CONNECTION id=%r from=%r' % (cid, addr))
-            spawn_thread(ClientHandler(self, cid, conn, addr, self.logger))
+            spawn_thread(self.Endpoint(self, cid, conn, addr, self.logger))
             conn, addr = None, None
-
-class ClientHandler:
-    def __init__(self, server, id, sock, addr, logger=None):
-        self.server = server
-        self.id = id
-        self.socket = sock
-        self.addr = addr
-        self.logger = logger
-        self.file = sock.makefile('rwb')
-        self.processor = DoorstepClientProcessor(self)
-        self.server._add_handler(self)
-
-    def send(self, message):
-        self.file.write(self.processor.encode(message))
-        self.file.flush()
-
-    def close(self):
-        self.log('CLOSING id=%r' % self.id)
-        self.server._remove_handler(self)
-        try:
-            self.processor.handle(None)
-        finally:
-            self.file.close()
-            self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
-
-    def log(self, *args):
-        if self.logger: self.logger.info(*args)
-
-    def __call__(self):
-        try:
-            while 1:
-                l = self.file.readline()
-                if not l: break
-                self.processor.handle(l)
-        finally:
-            try:
-                self.close()
-            except IOError:
-                pass
 
 class ChatDistributor:
     def __init__(self, server):
@@ -127,9 +127,9 @@ class ChatDistributor:
     def handle(self, connid, message):
         pass
 
-class ClientProcessor:
-    def __init__(self, handler):
-        self.handler = handler
+class ClientHandler:
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
 
     def encode(self, message):
         raise NotImplementedError
@@ -137,7 +137,7 @@ class ClientProcessor:
     def handle(self, line):
         raise NotImplementedError
 
-class DoorstepClientProcessor(ClientProcessor):
+class DoorstepClientHandler(ClientHandler):
     pass
 
 def main():
