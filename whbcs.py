@@ -39,6 +39,17 @@ class Token(str):
             pos = m.end()
         return ret
 
+    @classmethod
+    def split(cls, string, sep=r'\s+'):
+        pattern, pos, ret = re.compile(sep), 0, []
+        while 1:
+            m = pattern.search(string, pos)
+            if not m: break
+            ret.append(cls(string[pos:m.start()], pos))
+            pos = m.end()
+        if string[pos:]: ret.append(cls(string[pos:], pos))
+        return ret
+
     def __new__(cls, obj, offset):
         inst = str.__new__(cls, obj)
         inst.offset = offset
