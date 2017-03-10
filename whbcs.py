@@ -81,8 +81,8 @@ class Server:
             self.handler = hnd
             self.handler.init(False)
 
-        def send(self, message):
-            self.handler.send(message)
+        def deliver(self, message):
+            self.handler.deliver(message)
 
         def close(self):
             self.log('CLOSING id=%r' % self.id)
@@ -137,7 +137,7 @@ class Server:
         with self.lock:
             es = list(self.endpoints)
         for e in es:
-            e.send(message)
+            e.deliver(message)
 
     def close(self):
         self.log('CLOSING')
@@ -192,7 +192,7 @@ class ClientHandler:
     def init(self, first):
         pass
 
-    def send(self, message):
+    def deliver(self, message):
         raise NotImplementedError
 
     def quit(self, last):
@@ -230,7 +230,7 @@ class DoorstepClientHandler(LineBasedClientHandler):
         if first: self.println(APPNAME, 'v' + VERSION)
         self.println(GREETING % VERSION)
 
-    def send(self, message):
+    def deliver(self, message):
         pass
 
     def __call__(self):
