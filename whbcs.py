@@ -68,13 +68,13 @@ class Server:
             self.addr = addr
             self.logger = logger
             self.file = sock.makefile('rwb')
-            self.state_handler = ClientStateHandler(self)
+            ds = self.server.distributor
+            self.state_handler = ds.ClientStateHandler(self)
             self.handler = DoorstepClientHandler(self)
             self.server._add_endpoint(self)
 
         def submit(self, message):
-            if not self.state_handler.handle(message):
-                self.server.distributor.handle(self.id, message)
+            self.state_handler.handle(message)
 
         def swap_handler(self, hnd):
             self.handler.quit(False)
@@ -169,18 +169,18 @@ class Server:
             conn, addr = None, None
 
 class ChatDistributor:
+    class ClientStateHandler:
+        def __init__(self, endpoint):
+            self.endpoint = endpoint
+
+        def handle(self, msg):
+            self.endpoint.server.distributor.handle(self.endpoint.id, msg)
+
     def __init__(self, server):
         self.server = server
 
     def handle(self, connid, message):
         pass
-
-class ClientStateHandler:
-    def __init__(self, endpoint):
-        self.endpoint = endpoint
-
-    def handle(self, msg):
-        return False
 
 class ClientHandler:
     def __init__(self, endpoint):
