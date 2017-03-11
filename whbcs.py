@@ -172,8 +172,14 @@ class Server:
 
 class ChatDistributor:
     class ClientStateHandler:
+        VARS = {'nick': {'type': str, 'private': False},
+                'term': {'type': str, 'private': True},
+                'send-text': {'type': bool, 'private': True, 'default': True}}
+
         def __init__(self, endpoint):
             self.endpoint = endpoint
+            self.vars = {k: v['default'] for k, v in self.VARS.items()
+                         if 'default' in v}
 
         def handle(self, msg):
             self.endpoint.server.distributor.handle(self.endpoint.id, msg)
