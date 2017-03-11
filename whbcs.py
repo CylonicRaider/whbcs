@@ -226,6 +226,11 @@ class LineBasedClientHandler(ClientHandler):
             self.endpoint.file.flush()
 
 class DoorstepClientHandler(LineBasedClientHandler):
+    HELP = (('help', '[command]', 'Display help.', ''),
+            ('quit', '', 'Terminate connection.', ''),
+            ('ping', '', 'Check connectivity.', ''))
+    HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
+
     def init(self, first):
         if first: self.println(APPNAME, 'v' + VERSION)
         self.println(GREETING % VERSION)
@@ -233,19 +238,60 @@ class DoorstepClientHandler(LineBasedClientHandler):
     def deliver(self, message):
         pass
 
+    def format_help(self, cmd=None, long=False):
+        sp = lambda x, s=' ': s if x else ''
+        rf = lambda x: '# ' + x.replace('\n', '\n# ') + '\n' if x else '\n'
+        if cmd is None:
+            ret = ['# HELP\n']
+            for c, a, o, d in self.HELP:
+                ret.extend(('# /', c, sp(a), a, sp(o, ' -- '), o, '\n'))
+                if long and d: ret.append(rf(d))
+            return ''.join(ret).rstrip('\n')
+        elif long:
+            a, o, d = self.HELPDICT[cmd]
+            return ('# USAGE: /%s%s%s%s%s%s%s' % (cmd, sp(a), a,
+                sp(o, ' -- '), o, sp(d, '\n'), rf(d))).rstrip('\n')
+        else:
+            a, o, d = self.HELPDICT[cmd]
+            return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
+
     def __call__(self):
+        def usage():
+            self.println('FAIL', self.format_help(tokens[0].lstrip('/')))
         while 1:
             tokens = self.readline_words()
             if tokens is None:
                 return True
             elif not tokens:
                 pass
-            elif tokens[0] == '/quit':
-                return True
             elif tokens[0] == '/help':
-                self.println('# NYI')
+                if len(tokens) == 1:
+                    self.println('OK', self.format_help(None, True))
+                elif len(tokens) == 2:
+                    cmd = tokens[1]
+                    if cmd.startswith('/'):
+                        cmd = cmd[1:]
+                    if cmd in self.HELPDICT:
+                        self.println('OK', self.format_help(tokens[1], True))
+                    else:
+                        self.println('FAIL', '#', 'Unknown command /%s.' %
+                                     cmd)
+                else:
+                    usage()
+            elif tokens[0] == '/quit':
+                if len(tokens) != 1:
+                    usage()
+                    continue
+                return True
+            elif tokens[0] == '/ping':
+                if len(tokens) != 1:
+                    usage()
+                    continue
+                self.println('PONG')
+            elif tokens[0].startswith('/'):
+                self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
-                self.println('FAIL', '#', 'Unknown command.')
+                self.println('FAIL', '#', 'Join room to start chatting.')
 
 def main():
     # Interrupt execution
