@@ -126,7 +126,7 @@ class Server:
         self.logger = logger
         self._next_connid = 0
         self.lock = threading.RLock()
-        self.endpoints = []
+        self.endpoints = {}
         self.distributor = ChatDistributor(self)
 
     # Process a message (as a "live" data structure) from the given client.
@@ -136,7 +136,7 @@ class Server:
     # Broadcast a message (given as a "live" data structure) to all clients.
     def broadcast(self, message):
         with self.lock:
-            es = list(self.endpoints)
+            es = tuple(self.endpoints.values())
         for e in es:
             e.deliver(message)
 
@@ -144,7 +144,7 @@ class Server:
         self.log('CLOSING')
         self.socket.close()
         with self.lock:
-            es = list(self.endpoints)
+            es = tuple(self.endpoints.values())
         for e in es:
             e.close()
         self.log('CLOSED')
@@ -155,11 +155,11 @@ class Server:
 
     def _add_endpoint(self, hnd):
         with self.lock:
-            self.endpoints.append(hnd)
+            self.endpoints[hnd.id] = hnd
 
     def _remove_endpoint(self, hnd):
         with self.lock:
-            self.endpoints.remove(hnd)
+            del self.endpoints[hnd.id]
 
     def __call__(self):
         while 1:
