@@ -238,7 +238,7 @@ class DoorstepClientHandler(LineBasedClientHandler):
         self.println(GREETING % VERSION)
 
     def deliver(self, message):
-        pass
+        pass # Explicitly silenced.
 
     def format_help(self, cmd=None, long=False):
         sp = lambda x, s=' ': s if x else ''
