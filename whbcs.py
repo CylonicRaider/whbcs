@@ -85,14 +85,18 @@ class Server:
             self.handler.deliver(message)
 
         def close(self):
+            def silence(func, *args):
+                try:
+                    func(*args)
+                except Exception:
+                    pass
             self.log('CLOSING id=%r' % self.id)
             self.server._remove_endpoint(self)
-            try:
-                self.handler.quit(True)
-            finally:
-                self.file.close()
-                self.socket.shutdown(socket.SHUT_RDWR)
-                self.socket.close()
+            silence(self.handler.quit, True)
+            silence(self.socket.shutdown, socket.SHUT_RD)
+            silence(self.file.flush)
+            silence(self.socket.shutdown, socket.SHUT_WR)
+            silence(self.socket.close)
 
         def log(self, *args):
             if self.logger: self.logger.info(*args)
@@ -104,10 +108,7 @@ class Server:
                     if self.handler():
                         break
             finally:
-                try:
-                    self.close()
-                except IOError:
-                    pass
+                self.close()
 
     @classmethod
     def listen(cls, addr, logger=None, reuse_addr=False):
@@ -146,6 +147,7 @@ class Server:
             es = list(self.endpoints)
         for e in es:
             e.close()
+        self.log('CLOSED')
 
     def log(self, *args):
         if self.logger:
