@@ -68,21 +68,20 @@ class Server:
             self.addr = addr
             self.logger = logger
             self.file = sock.makefile('rwb')
-            ds = self.server.distributor
-            self.state_handler = ds.ClientStateHandler(self)
-            self.handler = DoorstepClientHandler(self)
+            self.handler = server.distributor.ClientHandler(self)
+            self.discipline = DoorstepLineDiscipline(self)
             self.server._add_endpoint(self)
 
         def submit(self, message):
-            self.state_handler.handle(message)
+            self.handler.handle(message)
 
-        def swap_handler(self, hnd):
-            self.handler.quit(False)
-            self.handler = hnd
-            self.handler.init(False)
+        def swap_discipline(self, hnd):
+            self.discipline.quit(False)
+            self.discipline = hnd
+            self.discipline.init(False)
 
         def deliver(self, message):
-            self.handler.deliver(message)
+            self.discipline.deliver(message)
 
         def close(self):
             def silence(func, *args):
@@ -92,7 +91,7 @@ class Server:
                     pass
             self.log('CLOSING id=%r' % self.id)
             self.server._remove_endpoint(self)
-            silence(self.handler.quit, True)
+            silence(self.discipline.quit, True)
             silence(self.socket.shutdown, socket.SHUT_RD)
             silence(self.file.flush)
             silence(self.socket.shutdown, socket.SHUT_WR)
@@ -103,9 +102,9 @@ class Server:
 
         def __call__(self):
             try:
-                self.handler.init(True)
+                self.discipline.init(True)
                 while 1:
-                    if self.handler():
+                    if self.discipline():
                         break
             finally:
                 self.close()
@@ -171,7 +170,7 @@ class Server:
             conn, addr = None, None
 
 class ChatDistributor:
-    class ClientStateHandler:
+    class ClientHandler:
         VARS = {'nick': {'type': str, 'private': False},
                 'term': {'type': str, 'private': True},
                 'send-text': {'type': bool, 'private': True, 'default': True}}
@@ -190,7 +189,7 @@ class ChatDistributor:
     def handle(self, connid, message):
         pass
 
-class ClientHandler:
+class LineDiscipline:
     def __init__(self, endpoint):
         self.endpoint = endpoint
 
@@ -209,9 +208,9 @@ class ClientHandler:
     def __call__(self):
         raise NotImplementedError
 
-class LineBasedClientHandler(ClientHandler):
+class LineBasedLineDiscipline(LineDiscipline):
     def __init__(self, endpoint):
-        ClientHandler.__init__(self, endpoint)
+        LineDiscipline.__init__(self, endpoint)
         self.ilock = threading.RLock()
         self.olock = threading.RLock()
         self.encoding = 'ascii'
@@ -233,7 +232,7 @@ class LineBasedClientHandler(ClientHandler):
             self.endpoint.file.write(d)
             self.endpoint.file.flush()
 
-class DoorstepClientHandler(LineBasedClientHandler):
+class DoorstepLineDiscipline(LineBasedLineDiscipline):
     HELP = (('help', '[command]', 'Display help.', ''),
             ('quit', '', 'Terminate connection.', ''),
             ('ping', '', 'Check connectivity.', ''))
