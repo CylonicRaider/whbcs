@@ -80,8 +80,7 @@ class Server:
             self.socket = sock
             self.addr = addr
             self.file = sock.makefile('rwb')
-            ds = server.distributor
-            self.handler = ds.ClientHandler(ds, self)
+            self.handler = server.distributor._make_handler(self)
 
         def close(self):
             self.server.log('CLOSING id=%r' % self.id)
@@ -178,6 +177,8 @@ class ChatDistributor:
         self.handlers = {}
         self.lock = threading.RLock()
 
+    def _make_handler(self, endpoint):
+        return self.ClientHandler(self, endpoint)
     def _add_handler(self, hnd):
         with self.lock:
             self.handlers[hnd.id] = hnd
