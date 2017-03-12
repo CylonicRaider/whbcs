@@ -27,6 +27,14 @@ def spawn_thread(func, *args, **kwds):
     thr.start()
     return thr
 
+# Silence any non-critical exception during the call of func and return
+# it instead.
+def silence(func, *args, **kwds):
+    try:
+        func(*args, **kwds)
+    except Exception as exc:
+        return exc
+
 # A string with an integer telling its position within another string.
 class Token(str):
     @classmethod
@@ -61,53 +69,24 @@ class Token(str):
 
 class Server:
     class Endpoint:
-        def __init__(self, server, id, sock, addr, logger=None):
+        def __init__(self, server, id, sock, addr):
             self.server = server
             self.id = id
             self.socket = sock
             self.addr = addr
-            self.logger = logger
             self.file = sock.makefile('rwb')
-            self.handler = server.distributor.ClientHandler(self)
-            self.discipline = DoorstepLineDiscipline(self)
-            self.server._add_endpoint(self)
-
-        def submit(self, message):
-            self.handler.handle(message)
-
-        def swap_discipline(self, hnd):
-            self.discipline.quit(False)
-            self.discipline = hnd
-            self.discipline.init(False)
-
-        def deliver(self, message):
-            self.discipline.deliver(message)
+            ds = server.distributor
+            self.handler = ds.ClientHandler(ds, self)
 
         def close(self):
-            def silence(func, *args):
-                try:
-                    func(*args)
-                except Exception:
-                    pass
-            self.log('CLOSING id=%r' % self.id)
-            self.server._remove_endpoint(self)
-            silence(self.discipline.quit, True)
+            self.server.log('CLOSING id=%r' % self.id)
             silence(self.socket.shutdown, socket.SHUT_RD)
             silence(self.file.flush)
             silence(self.socket.shutdown, socket.SHUT_WR)
             silence(self.socket.close)
 
-        def log(self, *args):
-            if self.logger: self.logger.info(*args)
-
         def __call__(self):
-            try:
-                self.discipline.init(True)
-                while 1:
-                    if self.discipline():
-                        break
-            finally:
-                self.close()
+            self.handler()
 
     @classmethod
     def listen(cls, addr, logger=None, reuse_addr=False):
@@ -124,41 +103,17 @@ class Server:
         self.socket = socket
         self.logger = logger
         self._next_connid = 0
-        self.lock = threading.RLock()
-        self.endpoints = {}
         self.distributor = ChatDistributor(self)
-
-    # Process a message (as a "live" data structure) from the given client.
-    def handle(self, id, message):
-        self.distributor.handle(id, message)
-
-    # Broadcast a message (given as a "live" data structure) to all clients.
-    def broadcast(self, message):
-        with self.lock:
-            es = tuple(self.endpoints.values())
-        for e in es:
-            e.deliver(message)
-
-    def close(self):
-        self.log('CLOSING')
-        self.socket.close()
-        with self.lock:
-            es = tuple(self.endpoints.values())
-        for e in es:
-            e.close()
-        self.log('CLOSED')
 
     def log(self, *args):
         if self.logger:
             self.logger.info(*args)
 
-    def _add_endpoint(self, hnd):
-        with self.lock:
-            self.endpoints[hnd.id] = hnd
-
-    def _remove_endpoint(self, hnd):
-        with self.lock:
-            del self.endpoints[hnd.id]
+    def close(self):
+        self.log('CLOSING')
+        silence(self.socket.close)
+        self.distributor.close()
+        self.log('CLOSED')
 
     def __call__(self):
         while 1:
@@ -166,7 +121,7 @@ class Server:
             cid = self._next_connid
             self._next_connid += 1
             self.log('CONNECTION id=%r from=%r' % (cid, addr))
-            spawn_thread(self.Endpoint(self, cid, conn, addr, self.logger))
+            spawn_thread(self.Endpoint(self, cid, conn, addr))
             conn, addr = None, None
 
 class ChatDistributor:
@@ -175,23 +130,68 @@ class ChatDistributor:
                 'term': {'type': str, 'private': True},
                 'send-text': {'type': bool, 'private': True, 'default': True}}
 
-        def __init__(self, endpoint):
+        def __init__(self, distributor, endpoint):
+            self.distributor = distributor
             self.endpoint = endpoint
+            self.id = endpoint.id
             self.vars = {k: v['default'] for k, v in self.VARS.items()
                          if 'default' in v}
+            self.discipline = DoorstepLineDiscipline(self)
+            distributor._add_handler(self)
 
-        def handle(self, msg):
-            self.endpoint.server.distributor.handle(self.endpoint.id, msg)
+        def deliver(self, message):
+            self.discipline.deliver(message)
+
+        def submit(self, message):
+            self.distributor.handle(message)
+
+        def close(self):
+            silence(self.discipline.quit, True)
+            self.distributor._remove_handler(self)
+            self.endpoint.close()
+
+        def __call__(self):
+            try:
+                self.discipline.init(True)
+                while 1:
+                    repl = self.discipline()
+                    if repl is None: break
+                    self.discipline.quit(False)
+                    self.discipline = repl
+                    self.discipline.init(False)
+            finally:
+                self.close()
 
     def __init__(self, server):
         self.server = server
+        self.handlers = {}
+        self.lock = threading.RLock()
+
+    def _add_handler(self, hnd):
+        with self.lock:
+            self.handlers[hnd.id] = hnd
+    def _remove_handler(self, hnd):
+        with self.lock:
+            del self.handlers[hnd.id]
 
     def handle(self, connid, message):
         pass
 
+    def broadcast(self, message):
+        with self.lock:
+            hnds = tuple(self.handlers.values())
+        for h in hnds:
+            h.deliver(message)
+
+    def close(self):
+        with self.lock:
+            hnds = tuple(self.handlers.values())
+        for h in hnds:
+            h.close()
+
 class LineDiscipline:
-    def __init__(self, endpoint):
-        self.endpoint = endpoint
+    def __init__(self, handler):
+        self.handler = handler
         self.ilock = threading.RLock()
         self.olock = threading.RLock()
         self.encoding = None
@@ -199,14 +199,14 @@ class LineDiscipline:
 
     def read(self, amount=-1):
         with self.ilock:
-            d = self.endpoint.file.read(amount)
+            d = self.handler.endpoint.file.read(amount)
             if self.encoding:
                 return d.decode(self.encoding, errors=self.errors)
             else:
                 return d
     def readline(self):
         with self.ilock:
-            ln = self.endpoint.file.readline()
+            ln = self.handler.endpoint.file.readline()
             if self.encoding:
                 return ln.decode(self.encoding, errors=self.errors)
             else:
@@ -220,26 +220,23 @@ class LineDiscipline:
         if self.encoding:
             data = data.encode(self.encoding, errors=self.errors)
         with self.olock:
-            self.endpoint.file.write(data)
-            self.endpoint.file.flush()
+            self.handler.endpoint.file.write(data)
+            self.handler.endpoint.file.flush()
     def println(self, *args, **kwds):
         if self.encoding:
-            s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
-            d = s.encode(self.encoding, errors=self.errors)
+            d = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
         else:
             d = kwds.get('sep', b' ').join(args) + kwds.get('end', b'\n')
-        with self.olock:
-            self.endpoint.file.write(d)
-            self.endpoint.file.flush()
-
-    def submit(self, msg):
-        self.endpoint.submit(msg)
+        self.write(d)
 
     def init(self, first):
         pass
 
     def deliver(self, message):
         raise NotImplementedError
+
+    def submit(self, msg):
+        self.handler.submit(msg)
 
     def quit(self, last):
         pass
@@ -288,7 +285,7 @@ class DoorstepLineDiscipline(LineDiscipline):
         while 1:
             tokens = self.readline_words()
             if tokens is None:
-                return True
+                return None
             elif not tokens:
                 pass
             elif tokens[0] == '/help':
@@ -309,7 +306,7 @@ class DoorstepLineDiscipline(LineDiscipline):
                 if len(tokens) != 1:
                     usage()
                     continue
-                return True
+                return None
             elif tokens[0] == '/ping':
                 if len(tokens) != 1:
                     usage()
