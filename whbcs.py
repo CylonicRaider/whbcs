@@ -192,6 +192,45 @@ class ChatDistributor:
 class LineDiscipline:
     def __init__(self, endpoint):
         self.endpoint = endpoint
+        self.ilock = threading.RLock()
+        self.olock = threading.RLock()
+        self.encoding = None
+        self.errors = None
+
+    def read(self, amount=-1):
+        with self.ilock:
+            d = self.endpoint.file.read(amount)
+            if self.encoding:
+                return d.decode(self.encoding, errors=self.errors)
+            else:
+                return d
+    def readline(self):
+        with self.ilock:
+            ln = self.endpoint.file.readline()
+            if self.encoding:
+                return ln.decode(self.encoding, errors=self.errors)
+            else:
+                return ln
+    def readline_words(self):
+        ln = self.readline()
+        if not ln: return None
+        return Token.extract(ln)
+
+    def write(self, data):
+        if self.encoding:
+            data = data.encode(self.encoding, errors=self.errors)
+        with self.olock:
+            self.endpoint.file.write(data)
+            self.endpoint.file.flush()
+    def println(self, *args, **kwds):
+        if self.encoding:
+            s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
+            d = s.encode(self.encoding, errors=self.errors)
+        else:
+            d = kwds.get('sep', b' ').join(args) + kwds.get('end', b'\n')
+        with self.olock:
+            self.endpoint.file.write(d)
+            self.endpoint.file.flush()
 
     def submit(self, msg):
         self.endpoint.submit(msg)
@@ -208,35 +247,16 @@ class LineDiscipline:
     def __call__(self):
         raise NotImplementedError
 
-class LineBasedLineDiscipline(LineDiscipline):
-    def __init__(self, endpoint):
-        LineDiscipline.__init__(self, endpoint)
-        self.ilock = threading.RLock()
-        self.olock = threading.RLock()
-        self.encoding = 'ascii'
-        self.errors = 'replace'
-
-    def readline(self):
-        with self.ilock:
-            ln = self.endpoint.file.readline()
-            return ln.decode(self.encoding, errors=self.errors)
-    def readline_words(self):
-        ln = self.readline()
-        if not ln: return None
-        return Token.extract(ln)
-
-    def println(self, *args, **kwds):
-        s = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
-        d = s.encode(self.encoding, errors=self.errors)
-        with self.olock:
-            self.endpoint.file.write(d)
-            self.endpoint.file.flush()
-
-class DoorstepLineDiscipline(LineBasedLineDiscipline):
+class DoorstepLineDiscipline(LineDiscipline):
     HELP = (('help', '[command]', 'Display help.', ''),
             ('quit', '', 'Terminate connection.', ''),
             ('ping', '', 'Check connectivity.', ''))
     HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
+
+    def __init__(self, endpoint):
+        LineDiscipline.__init__(self, endpoint)
+        self.encoding = 'ascii'
+        self.errors = 'replace'
 
     def init(self, first):
         if first: self.println(APPNAME, 'v' + VERSION)
