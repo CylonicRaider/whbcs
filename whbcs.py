@@ -67,7 +67,12 @@ class Token(str):
         return '%s(%s, %r)' % (self.__class__.__name__, str.__repr__(self),
                                self.offset)
 
+# Server socket processing.
+# Responsible for accepting connections, logging those, spawning Endpoint-s
+# for them.
 class Server:
+    # Client connection processing.
+    # Little own functionality.
     class Endpoint:
         def __init__(self, server, id, sock, addr):
             self.server = server
@@ -124,7 +129,13 @@ class Server:
             spawn_thread(self.Endpoint(self, cid, conn, addr))
             conn, addr = None, None
 
+# Chat nexus.
+# Responsible for keeping track of ClientHandlers and routing messages
+# between them.
 class ChatDistributor:
+    # Individual client processor.
+    # Responsible for the management of client state independently from the
+    # mode of connection.
     class ClientHandler:
         VARS = {'nick': {'type': str, 'private': False},
                 'term': {'type': str, 'private': True},
@@ -189,6 +200,9 @@ class ChatDistributor:
         for h in hnds:
             h.close()
 
+# Line discipline (not really).
+# Responsible for the actual formatting of IO. May be dynamically swapped
+# over the lifetime of a connection.
 class LineDiscipline:
     def __init__(self, handler):
         self.handler = handler
@@ -244,6 +258,9 @@ class LineDiscipline:
     def __call__(self):
         raise NotImplementedError
 
+# Doorstep mode.
+# The initial mode a connection is in; a lowest-denominator compromise
+# between all clients.
 class DoorstepLineDiscipline(LineDiscipline):
     HELP = (('help', '[command]', 'Display help.', ''),
             ('quit', '', 'Terminate connection.', ''),
