@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 7, as of 2017-03-08</aside>
+<aside>Revision 8, as of 2017-03-12</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -184,12 +184,21 @@ and/or nested objects, which can have <tt>text</tt> fields as well. Objects
 without <tt>text</tt> fields are provided as context and would not be
 rendered into text by the server itself. The emission of <tt>text</tt> fields
 is configurable (to save bandwidth) by updating the <tt><b>send-text</b></tt>
-variable.</li>
+variable.<br/>
+If an object does not have a <tt>text</tt> attribute, but its
+<tt>content</tt> member has, the latter's shall be used instead,
+recursively.</li>
 <li><tt>prefix</tt> &mdash; <strong>Textual representation prefix</strong>:
 A piece of text (or a formatted object) that should be prepended to
 <tt>text</tt>, but does not semantically belong to it itself. For example, a
 <tt><b>mention</b></tt> object would have a prefix containing the sigil
-character that introduced the mention.</li>
+character that introduced the mention.<br/>
+If multiple objects' members are composed (such as when an object has no
+<tt>text</tt> member but its <tt>content</tt> has), the combination of the
+<tt>prefix</tt>, <tt>text</tt>, and <tt>postfix</tt> of the <tt>content</tt>
+shall be treated as equivalent to the (absent) <tt>text</tt> member of the
+parent (<i>i.e.</i> the parent's <tt>prefix</tt> shall be prepended to the
+<tt>prefix</tt> of the child, <i>etc.</i>).</li>
 <li><tt>postfix</tt> &mdash; <strong>Textual representation postfix</strong>:
 The equivalent of <tt>prefix</tt> that should be appended to the
 <tt>text</tt>.</li>
@@ -325,6 +334,16 @@ them. Can be used to save bandwidth.</li>
 <dd>Only the own value can be queried/modified.</dd>
 </dl>
 
+<h4><tt>error</tt></h4>
+<p>An error reply. Fields are:</p>
+<ul>
+<li><tt>code</tt> &mdash; <strong>Error code</strong>: A short alphanumeric
+string identifying the error in a machine-readable way.</li>
+<li><tt>text</tt> &mdash; <strong>Error message</strong>: A human-readable
+explanation of the error; may be a string or an array of strings and objects
+as is generally the case with <tt>text</tt> members.</li>
+</ul>
+
 <h4><tt>post</tt></h4>
 <p>An individual chat message. <tt>variant</tt> may be:</p>
 <ul>
@@ -361,6 +380,19 @@ still can be highlighted in a certain way. Most notably used in
 <tt><b>text</b></tt> members of messages. <tt>variant</tt> contains
 detail:</p>
 <ul>
+<li><tt>reply</tt> &mdash; <strong>Server reply</strong>: A reply keyword as
+elaborated upon in a previous section. Since the API already provides that
+information, they keyword is decorational only.
+<pre>
+<mark>OK</mark> # USAGE: /help [command] -- Display help.
+</pre></li>
+<li><tt>replypad</tt> &mdash; <strong>Server reply framing</strong>:
+Characters surrounding a reply to a command. Again, as the information is
+already present in the API message, this only serves to create an air of
+homogeneity for the end-user.
+<pre>
+OK <mark>#</mark> USAGE: /help [command] -- Display help.
+</pre></li>
 <li><tt>syspad</tt> &mdash; <strong>Server message framing</strong>:
 Characters surrounding a server message.
 <pre>
@@ -376,7 +408,7 @@ surrounding a "normal" chat message.
 <pre>
 <mark>*</mark> <i>Gary</i> is now <i>Fred</i>
 </pre></li>
-<li><tt>msgtxt</tt> &mdash; <strong>Chat message text</strong>: Actual
+<li><tt>msgtext</tt> &mdash; <strong>Chat message text</strong>: Actual
 content of an in-chat message.
 <pre>
 * <mark><i>Gary</i> is now <i>Fred</i></mark>
