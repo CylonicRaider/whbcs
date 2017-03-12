@@ -249,8 +249,8 @@ class LineDiscipline:
     def deliver(self, message):
         raise NotImplementedError
 
-    def submit(self, msg):
-        self.handler.submit(msg)
+    def submit(self, message):
+        self.handler.submit(message)
 
     def quit(self, last):
         pass
