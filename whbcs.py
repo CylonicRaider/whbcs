@@ -407,13 +407,13 @@ class DoorstepLineDiscipline(LineDiscipline):
                 pass
             elif tokens[0] == '/help':
                 if len(tokens) == 1:
-                    self.println('OK', self.format_help(None, True))
+                    self.println('OK', self.format_help(None, False))
                 elif len(tokens) == 2:
                     cmd = tokens[1]
                     if cmd.startswith('/'):
                         cmd = cmd[1:]
                     if cmd in self.HELPDICT:
-                        self.println('OK', self.format_help(tokens[1], True))
+                        self.println('OK', self.format_help(cmd, True))
                     else:
                         self.println('FAIL', '#', 'Unknown command /%s.' %
                                      cmd)
