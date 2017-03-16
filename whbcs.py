@@ -172,9 +172,18 @@ class ChatDistributor:
             if message['type'] == 'query':
                 reply(self.query_var(message['content']))
             elif message['type'] == 'update':
-                reply(self.update_var(message['content']))
+                res = self.update_var(message['content'])
+                desc = self.VARS[res['content']['name']]
+                if res['type'] == 'updated' and not desc['private']:
+                    if message.get('seq'):
+                        self.distributor.broadcast(res,
+                            {self.id: {'seq': message['seq']}})
+                    else:
+                        self.distributor.broadcast(res)
+                else:
+                    reply(res)
             else:
-                self.distributor.handle(message)
+                self.distributor.handle(self.id, message)
 
         def close(self):
             silence(self.discipline.quit, True)
@@ -254,11 +263,15 @@ class ChatDistributor:
     def handle(self, connid, message):
         pass
 
-    def broadcast(self, message):
+    def broadcast(self, message, amend=None):
+        if amend is None: amend = {}
         with self.lock:
             hnds = tuple(self.handlers.values())
         for h in hnds:
-            h.deliver(message)
+            if h.id in amend:
+                h.deliver(dict(message, **amend[h.id]))
+            else:
+                h.deliver(message)
 
     def close(self):
         with self.lock:
