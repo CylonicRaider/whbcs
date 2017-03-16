@@ -167,7 +167,8 @@ class ChatDistributor:
 
         def submit(self, message):
             def reply(msg):
-                if message.get('seq'): msg['seq'] = message['seq']
+                if message.get('seq') is not None:
+                    msg['seq'] = message['seq']
                 self.deliver(msg)
             if message['type'] == 'query':
                 reply(self.query_var(message['content']))
@@ -345,20 +346,33 @@ class LineDiscipline:
 class DoorstepLineDiscipline(LineDiscipline):
     HELP = (('help', '[command]', 'Display help.', ''),
             ('quit', '', 'Terminate connection.', ''),
-            ('ping', '', 'Check connectivity.', ''))
+            ('ping', '', 'Check connectivity.', ''),
+            ('term', '[dumb|ansi]', 'Query/Set terminal type.',
+                 'dumb -- Minimalistic mode.\n'
+                 'ansi -- Advanced escape sequences.'),
+            ('nick', '[name]', 'Query/Set nickname.', ''))
     HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
 
     def __init__(self, endpoint):
         LineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
         self.errors = 'replace'
+        self.seq = 0
 
     def init(self, first):
         if first: self.println(APPNAME, 'v' + VERSION)
         self.println(GREETING % VERSION)
 
     def deliver(self, message):
-        pass # Explicitly silenced.
+        if message.get('seq') is None:
+            return # Explicitly silenced.
+        elif message['type'] == 'updated':
+            self.println('OK')
+        elif (message['type'] == 'success' and
+                message['content']['type'] == 'variable'):
+            self.println('OK', '#', message['content']['value'])
+        elif message['type'] == 'failure':
+            self.println('FAIL', '#', message['content']['text'])
 
     def format_help(self, cmd=None, long=False):
         sp = lambda x, s=' ': s if x else ''
@@ -376,6 +390,11 @@ class DoorstepLineDiscipline(LineDiscipline):
         else:
             a, o, d = self.HELPDICT[cmd]
             return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
+
+    def _submit(_self, _type, **_content):
+        _self.seq += 1
+        return _self.submit({'type': _type, 'seq': _self.seq,
+                             'content': _content})
 
     def __call__(self):
         def usage():
@@ -410,6 +429,22 @@ class DoorstepLineDiscipline(LineDiscipline):
                     usage()
                     continue
                 self.println('PONG')
+            elif tokens[0] == '/term':
+                if len(tokens) == 1:
+                    self._submit('query', type='variable', name='term')
+                elif len(tokens) == 2 and tokens[1] in ('dumb', 'ansi'):
+                    self._submit('update', type='variable', name='term',
+                                 value=tokens[1])
+                else:
+                    usage()
+            elif tokens[0] == '/nick':
+                if len(tokens) == 1:
+                    self._submit('query', type='variable', name='nick')
+                elif len(tokens) == 2:
+                    self._submit('update', type='variable', name='nick',
+                                 value=tokens[1])
+                else:
+                    usage()
             elif tokens[0].startswith('/'):
                 self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
