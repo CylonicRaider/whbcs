@@ -153,7 +153,15 @@ class ChatDistributor:
             self.discipline.deliver(message)
 
         def submit(self, message):
-            self.distributor.handle(message)
+            def reply(msg):
+                if message.get('seq'): msg['seq'] = message['seq']
+                self.deliver(msg)
+            if message['type'] == 'query':
+                reply(self.query_var(message['content']))
+            elif message['type'] == 'update':
+                reply(self.update_var(message['content']))
+            else:
+                self.distributor.handle(message)
 
         def close(self):
             silence(self.discipline.quit, True)
@@ -172,6 +180,54 @@ class ChatDistributor:
             finally:
                 self.close()
 
+        def query_var(self, variable):
+            try:
+                desc = self.VARS[variable['name']]
+            except KeyError:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'NOVAR', 'text': 'No such variable.'}}
+            cltid = variable.get('id', self.id)
+            if cltid != self.id and desc['private']:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'VARPRIV', 'text': 'Variable is private.'}}
+            try:
+                hnd = self.distributor.get_handler(cltid)
+            except KeyError:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'NOCLNT', 'text': 'No such client.'}}
+            try:
+                value = hnd.vars[variable['name']]
+            except KeyError:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'NOVAL', 'text': 'Variable has no value.'}}
+            return {'type': 'success', 'content': {'type': 'variable',
+                'id': cltid, 'name': variable['name'], 'value': value}}
+
+        def update_var(self, variable):
+            try:
+                desc = self.VARS[variable['name']]
+            except KeyError:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'NOVAR', 'text': 'No such variable.'}}
+            cltid = variable.get('id', self.id)
+            if cltid != self.id:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'VARRO', 'text': 'Variable read-only.'}}
+            try:
+                value = desc['type'](variable['value'])
+            except ValueError:
+                return {'type': 'failure', 'content': {'type': 'error',
+                    'code': 'BADVAL', 'text': 'Bad value.'}}
+            oldvar = {'type': 'variable', 'id': self.id,
+                      'name': variable['name']}
+            try:
+                oldvar['value'] = self.vars[variable['name']]
+            except KeyError:
+                pass
+            self.vars[variable['name']] = value
+            return {'type': 'updated', 'from': oldvar,
+                'content': dict(oldvar, value=value)}
+
     def __init__(self, server):
         self.server = server
         self.handlers = {}
@@ -185,6 +241,9 @@ class ChatDistributor:
     def _remove_handler(self, hnd):
         with self.lock:
             del self.handlers[hnd.id]
+    def get_handler(self, id):
+        with self.lock:
+            return self.handlers[id]
 
     def handle(self, connid, message):
         pass
@@ -204,6 +263,8 @@ class ChatDistributor:
 # Line discipline (not really).
 # Responsible for the actual formatting of IO. May be dynamically swapped
 # over the lifetime of a connection.
+# Must ensure outgoing messages are well-formed, and can assume that for
+# incoming ones in exchange.
 class LineDiscipline:
     def __init__(self, handler):
         self.handler = handler
