@@ -67,6 +67,19 @@ class Token(str):
         return '%s(%s, %r)' % (self.__class__.__name__, str.__repr__(self),
                                self.offset)
 
+# Error registry.
+ERRORS = {
+    'BADVAL': 'Bad value.',
+    'NOCLNT': 'No such client.',
+    'NOVAL': 'Variable has no value.',
+    'NOVAR': 'No such variable.',
+    'VARPRIV': 'Variable is private.',
+    'VARRO': 'Variable is read-only.',
+    }
+def make_error(code, wrap=False):
+    err = {'type': 'error', 'code': code, 'text': ERRORS[code]}
+    return {'type': 'failure', 'content': err} if wrap else err
+
 # Server socket processing.
 # Responsible for accepting connections, logging those, spawning Endpoint-s
 # for them.
@@ -184,22 +197,18 @@ class ChatDistributor:
             try:
                 desc = self.VARS[variable['name']]
             except KeyError:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'NOVAR', 'text': 'No such variable.'}}
+                return make_error('NOVAR', True)
             cltid = variable.get('id', self.id)
             if cltid != self.id and desc['private']:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'VARPRIV', 'text': 'Variable is private.'}}
+                return make_error('VARPRIV', True)
             try:
                 hnd = self.distributor.get_handler(cltid)
             except KeyError:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'NOCLNT', 'text': 'No such client.'}}
+                return make_error('NOCLNT', True)
             try:
                 value = hnd.vars[variable['name']]
             except KeyError:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'NOVAL', 'text': 'Variable has no value.'}}
+                return make_error('NOVAL', True)
             return {'type': 'success', 'content': {'type': 'variable',
                 'id': cltid, 'name': variable['name'], 'value': value}}
 
@@ -207,17 +216,14 @@ class ChatDistributor:
             try:
                 desc = self.VARS[variable['name']]
             except KeyError:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'NOVAR', 'text': 'No such variable.'}}
+                return make_error('NOVAR', True)
             cltid = variable.get('id', self.id)
             if cltid != self.id:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'VARRO', 'text': 'Variable read-only.'}}
+                return make_error('VARRO', True)
             try:
                 value = desc['type'](variable['value'])
             except ValueError:
-                return {'type': 'failure', 'content': {'type': 'error',
-                    'code': 'BADVAL', 'text': 'Bad value.'}}
+                return make_error('BADVAL', True)
             oldvar = {'type': 'variable', 'id': self.id,
                       'name': variable['name']}
             try:
