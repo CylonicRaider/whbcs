@@ -69,8 +69,11 @@ class Token(str):
 
 # Error registry.
 ERRORS = {
+    'AJOINED': 'Already joined.',
+    'ALEFT': 'Already left.',
     'BADVAL': 'Bad value.',
     'NOCLNT': 'No such client.',
+    'NORDY': 'Not ready.',
     'NOVAL': 'Variable has no value.',
     'NOVAR': 'No such variable.',
     'VARPRIV': 'Variable is private.',
@@ -149,9 +152,12 @@ class ChatDistributor:
     # Responsible for the management of client state independently from the
     # mode of connection.
     class ClientHandler:
-        VARS = {'nick': {'type': str, 'private': False},
-                'term': {'type': str, 'private': True},
-                'send-text': {'type': bool, 'private': True, 'default': True}}
+        VARS = {'nick': {'type': str, 'private': False, 'rw': True},
+                'term': {'type': str, 'private': True, 'rw': True},
+                'send-text': {'type': bool, 'private': True, 'rw': True,
+                              'default': True},
+                'joined': {'type': bool, 'private': False, 'rw': False,
+                           'default': False}}
 
         def __init__(self, distributor, endpoint):
             self.distributor = distributor
@@ -164,6 +170,10 @@ class ChatDistributor:
 
         def deliver(self, message):
             self.discipline.deliver(message)
+
+        def user_info(self):
+            return {'type': 'user', 'id': self.id,
+                    'nick': self.vars['nickname']}
 
         def submit(self, message):
             def reply(msg):
@@ -187,6 +197,22 @@ class ChatDistributor:
                     broadcast(res)
                 else:
                     reply(res)
+            elif message['type'] == 'join':
+                if self.vars['joined']:
+                    reply(make_error('AJOINED', True))
+                elif any(k for k in self.VARS if k not in self.vars):
+                    reply(make_error('NORDY', True))
+                else:
+                    self.vars['joined'] = True
+                    broadcast({'type': 'joined',
+                               'content': self.user_info()})
+            elif message['type'] == 'leave':
+                if not self.vars['joined']:
+                    reply(make_error('ALEFT', True))
+                else:
+                    self.vars['joined'] = False
+                    broadcast({'type': 'left',
+                               'content': self.user_info()})
             else:
                 self.distributor.handle(self.id, message)
 
@@ -232,7 +258,7 @@ class ChatDistributor:
             except KeyError:
                 return make_error('NOVAR', True)
             cltid = variable.get('id', self.id)
-            if cltid != self.id:
+            if cltid != self.id or not desc['rw']:
                 return make_error('VARRO', True)
             try:
                 value = desc['type'](variable['value'])
