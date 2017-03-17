@@ -170,7 +170,9 @@ class ChatDistributor:
                 if message.get('seq') is not None:
                     msg['seq'] = message['seq']
                 self.deliver(msg)
-            if message['type'] == 'query':
+            if message['type'] == 'ping':
+                reply({'type': 'pong'})
+            elif message['type'] == 'query':
                 reply(self.query_var(message['content']))
             elif message['type'] == 'update':
                 res = self.update_var(message['content'])
