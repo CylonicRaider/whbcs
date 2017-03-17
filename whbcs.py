@@ -170,6 +170,12 @@ class ChatDistributor:
                 if message.get('seq') is not None:
                     msg['seq'] = message['seq']
                 self.deliver(msg)
+            def broadcast(msg):
+                if message.get('seq') is not None:
+                    self.distributor.broadcast(msg, {self.id: {'seq':
+                        message['seq']}})
+                else:
+                    self.distributor.broadcast(msg)
             if message['type'] == 'ping':
                 reply({'type': 'pong'})
             elif message['type'] == 'query':
@@ -178,11 +184,7 @@ class ChatDistributor:
                 res = self.update_var(message['content'])
                 desc = self.VARS[res['content']['name']]
                 if res['type'] == 'updated' and not desc['private']:
-                    if message.get('seq'):
-                        self.distributor.broadcast(res,
-                            {self.id: {'seq': message['seq']}})
-                    else:
-                        self.distributor.broadcast(res)
+                    broadcast(res)
                 else:
                     reply(res)
             else:
