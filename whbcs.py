@@ -321,8 +321,11 @@ class ChatDistributor:
                 h.deliver(dict(message, **amend[h.id]))
             else:
                 h.deliver(message)
+    def sysmsg(self, text):
+        self.broadcast({'type': 'sysmsg', 'text': 'Server will shut down now.'})
 
     def close(self):
+        self.sysmsg('Server will shut down now.')
         with self.lock:
             hnds = tuple(self.handlers.values())
         for h in hnds:
@@ -412,7 +415,9 @@ class DoorstepLineDiscipline(LineDiscipline):
         self.println(GREETING % VERSION)
 
     def deliver(self, message):
-        if message.get('seq') is None:
+        if message['type'] == 'sysmsg':
+            self.println('#', '!!!', message['text'], '!!!')
+        elif message.get('seq') is None:
             return # Explicitly silenced.
         elif message['type'] == 'updated':
             self.println('OK')
