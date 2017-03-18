@@ -74,6 +74,7 @@ ERRORS = {
     'BADVAL': 'Bad value.',
     'NOCLNT': 'No such client.',
     'NORDY': 'Not ready.',
+    'NOTYPE': 'No such message type.',
     'NOVAL': 'Variable has no value.',
     'NOVAR': 'No such variable.',
     'VARPRIV': 'Variable is private.',
@@ -171,7 +172,7 @@ class ChatDistributor:
         def deliver(self, message):
             self.discipline.deliver(message)
 
-        def user_info(self):
+        def _user_info(self):
             return {'type': 'user', 'id': self.id,
                     'nick': self.vars['nickname']}
 
@@ -205,16 +206,16 @@ class ChatDistributor:
                 else:
                     self.vars['joined'] = True
                     broadcast({'type': 'joined',
-                               'content': self.user_info()})
+                               'content': self._user_info()})
             elif message['type'] == 'leave':
                 if not self.vars['joined']:
                     reply(make_error('ALEFT', True))
                 else:
                     self.vars['joined'] = False
                     broadcast({'type': 'left',
-                               'content': self.user_info()})
+                               'content': self._user_info()})
             else:
-                self.distributor.handle(self.id, message)
+                self.distributor.handle(self, message)
 
         def close(self):
             silence(self.discipline.quit, True)
@@ -291,8 +292,25 @@ class ChatDistributor:
         with self.lock:
             return self.handlers[id]
 
-    def handle(self, connid, message):
-        pass
+    def _process_post(self, post):
+        return post
+
+    def handle(self, handler, message):
+        def reply(msg):
+            if message.get('seq') is not None:
+                handler.deliver(dict(msg, seq=message['seq']))
+            else:
+                handler.deliver(msg)
+        def broadcast(msg):
+            if message.get('seq') is not None:
+                self.broadcast(msg, {handler.id: {'seq': message['seq']}})
+            else:
+                self.broadcast(msg)
+        if message['type'] == 'send':
+            np = self._process_post(message['content'])
+            broadcast({'type': 'chat', 'content': np})
+        else:
+            reply(make_error('NOTYPE', True))
 
     def broadcast(self, message, amend=None):
         if amend is None: amend = {}
