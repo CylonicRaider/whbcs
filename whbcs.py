@@ -167,6 +167,7 @@ class ChatDistributor:
             self.vars = {k: v['default'] for k, v in self.VARS.items()
                          if 'default' in v}
             self.discipline = DoorstepLineDiscipline(self)
+            self._closing = False
             distributor._add_handler(self)
 
         def deliver(self, message):
@@ -214,13 +215,21 @@ class ChatDistributor:
                     self.vars['joined'] = False
                     broadcast({'type': 'left',
                                'content': self._user_info()})
+            elif message['type'] == 'quit':
+                if self.vars['joined']:
+                    self.vars['joined'] = False
+                    broadcast({'type': 'left',
+                               'content': self._user_info()})
+                self.close()
             else:
                 self.distributor.handle(self, message)
 
         def close(self):
-            silence(self.discipline.quit, True)
-            self.distributor._remove_handler(self)
-            self.endpoint.close()
+            if not self._closing:
+                self._closing = True
+                silence(self.discipline.quit, True)
+                self.distributor._remove_handler(self)
+                self.endpoint.close()
 
         def __call__(self):
             try:
@@ -476,7 +485,7 @@ class DoorstepLineDiscipline(LineDiscipline):
                 if len(tokens) != 1:
                     usage()
                     continue
-                return None
+                self._submit('quit')
             elif tokens[0] == '/ping':
                 if len(tokens) != 1:
                     usage()
