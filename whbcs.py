@@ -84,6 +84,78 @@ def make_error(code, wrap=False):
     err = {'type': 'error', 'code': code, 'text': ERRORS[code]}
     return {'type': 'failure', 'content': err} if wrap else err
 
+# Text member generation.
+def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
+_stsp = (_mkhl('msgpad', '*'), _mkhl('spc', ' '))
+def _format_updated(obj):
+    if obj['content']['name'] == 'nick' and 'value' in obj['from']:
+        format_text(obj['from'])
+        return (_stsp, _mkhl('msgtext', (obj['from'], ' is now ',
+                                         obj['content'])), None)
+def _format_variable(obj):
+    if obj['name'] == 'nick':
+        return (None, obj['value'], None)
+def _format_post(obj):
+    return ((_mkhl('chatpad', '<'), obj['sender'], _mkhl('chatpad', '>'),
+             _stsp[1]), None, None)
+OBJECT_TEXTS = {'pong': {
+        'prefix': _mkhl('reply', 'PONG')
+    }, 'success': {
+        'prefix': _mkhl('reply', 'OK')
+    }, 'failure': {
+        'prefix': _mkhl('reply', 'FAIL')
+    }, 'updated': {
+        'func': _format_updated
+    }, 'joined': {
+        'prefix': _stsp,
+        'postfix': (_stsp[1], _mkhl('msgtext', 'has joined'))
+    }, 'left': {
+        'prefix': _stsp,
+        'postfix': (_stsp[1], _mkhl('msgtext', 'has left')),
+        'variant': {
+            'abrupt': {
+                'prefix': _stsp,
+                'postfix': (_stsp[1], _mkhl('msgerr',
+                                            'has left unexpectedly'))
+            }
+        }
+    }, 'sysmsg': {
+        'func': lambda obj: ((_mkhl('syspad', '***'), _stsp[1]),
+                             obj['text'], None)
+    }, 'variable': {
+        'func': _format_variable
+    }, 'post': {
+        'func': _format_post
+    }, 'user': {
+        'func': lambda obj: (None, obj['nick'], None)
+    }}
+def format_text(obj, _table=None):
+    try:
+        info = _table[obj['type']]
+    except (TypeError, KeyError):
+        info = OBJECT_TEXTS.get(obj.get('type'))
+    try:
+        info = info['variant'][obj['variant']]
+    except KeyError:
+        pass
+    if not info:
+        return
+    cnt = obj.get('content')
+    if isinstance(cnt, dict) and 'type' in cnt:
+        cntinfo = format_text(cnt, info.get('content'))
+        if cntinfo: info = cntinfo
+    if 'func' in info:
+        res = info['func'](obj)
+        if res is not None:
+            if res[0]: obj['prefix']  = res[0]
+            if res[1]: obj['text']    = res[1]
+            if res[2]: obj['postfix'] = res[2]
+    else:
+        for attr in ('prefix', 'text', 'postfix'):
+            if attr not in info: continue
+            obj[attr] = info[attr]
+    return info.get('parent')
+
 # Server socket processing.
 # Responsible for accepting connections, logging those, spawning Endpoint-s
 # for them.
@@ -171,6 +243,7 @@ class ChatDistributor:
             distributor._add_handler(self)
 
         def deliver(self, message):
+            format_text(message)
             self.discipline.deliver(message)
 
         def _user_info(self):
