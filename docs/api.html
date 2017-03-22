@@ -8,10 +8,10 @@ tt, pre { font-family: "Courier New", monospace; }
 h1 { text-align: center; }
 p, li, aside { text-align: justify; }
 pre { background: #e0e0e0; white-space: pre-wrap; }
-h1, h2, h3, h4, h5, p, ul, dl, pre, aside, hr { margin: 5px 0; }
+h1, h2, h3, h4, h5, p, ul, ol, dl, pre, aside, hr { margin: 5px 0; }
 h2, h3, h4 { margin-top: 15px; }
 h5 { font-size: 1em; }
-ul, dl { padding-left: 0; }
+ul, ol, dl { padding-left: 0; }
 dt { font-weight: bold; margin-top: 5px; }
 dd { margin: 0; }
 pre { padding: 3px 0; }
@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 8, as of 2017-03-12</aside>
+<aside>Revision 9, as of 2017-03-22</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -91,21 +91,25 @@ circles, the topic of bots was raised, which led to this API.</p>
 a TCP channel, which are to be mapped to ASCII codepoints. Encryption is
 currently not used; UTF-8 is not employed at this level as not all clients
 are guaranteed to use it; API clients can encode Unicode via means elaborated
-below, but should be aware that not all clients may receive it properly.</p>
+below, but should be aware that not all other clients may receive it
+properly.</p>
 <p>As far as this API is concerned, communication is always line-based; lines
 are terminated with the line feed (<tt>\x0A</tt>) character; leading and
 trailing whitespace should be ignored.</p>
 <p>In doorstep mode (defined below), the connection is synchronous; in
-API mode, is becomes full-duplex. <small>(There are half-duplex modes of
-direct communications with the user; they are out of the scope of this
-API.)</small>
+API mode, is becomes full-duplex.
+
+<aside><h5>Note</h5> that there are half-duplex modes of direct
+communication with the user (for "dumb" terminals); they are out of the scope
+of this API.</aside>
 
 <h3>Initial handshake</h3>
 <p>Initially, the connection is in <em>doorstep mode</em>; the server,
 assuming a human client, sends a textual greeting after a version
 advertisement. A human client would configure certain properties of themself
-&mdash; the terminal type and the nickname &mdash; and join; bots can enable
-<em>API mode</em> instead.</p>
+&mdash; the terminal type and the nickname &mdash; and join; bots (or
+advanced clients, or proxies, <i>etc.</i>) can enable <em>API mode</em>
+instead.</p>
 
 <h4>Server lines</h4>
 <p><em>Comment lines</em> are sent for human users' information; they begin
@@ -146,16 +150,11 @@ command)</small> can be obtained by using the <tt>/help</tt> command
 interactively.</p>
 
 <h3>API mode format</h3>
-<p>In API mode, the commands mentioned earlier are complemented by <em>JSON
-objects</em> as the main means of transporting data; the separation of words
-is irrelevant for those, and should not be performed. More exactly, lines
-starting with the opening brace character (<tt>{</tt>) are interpreted as
-JSON messages by WHBCS, and the server sends all its messages in JSON
-format.</p>
-<aside><h5>Note</h5> that messages not starting with a brace will be
-interpreted as in non-API mode; commands can be used and messages can be sent
-(if the API client has joined properly), although this behavior is
-discouraged.</aside>
+<p>In API mode, the commands mentioned earlier are replaced by <em>JSON
+objects</em> for transporting data; the separation of words is irrelevant for
+those, and should not be performed. Lines <em>not</em> starting with an
+opening brace character (<tt>{</tt>) are interpreted as attempts to use
+legacy commands, and replied to with errors.</p>
 
 <h2>API messages</h2>
 <p>The client and the server may send messages at any time (asynchronously);
@@ -175,33 +174,8 @@ a different "sub-type", or a different role an object has. As <tt>type</tt>,
 the value is a string. <i>E.g.</i>, the <tt><b>post</b></tt> type has the
 variants <tt>normal</tt> and <tt>emote</tt>.</li>
 <li><tt>content</tt> &mdash; <strong>Main content</strong>: Stores, well, the
-main content of the object. Can be of an arbitrary type.</li>
-<li><tt>text</tt> &mdash; <strong>Textual representation</strong>: The
-server's preferred way of presenting the given object, as used for terminal
-clients. May be absent, indicating the server does not honor this object with
-a textual representation. The value may be a string, or an array of strings
-and/or nested objects, which can have <tt>text</tt> fields as well. Objects
-without <tt>text</tt> fields are provided as context and would not be
-rendered into text by the server itself. The emission of <tt>text</tt> fields
-is configurable (to save bandwidth) by updating the <tt><b>send-text</b></tt>
-variable.<br/>
-If an object does not have a <tt>text</tt> attribute, but its
-<tt>content</tt> member has, the latter's shall be used instead,
-recursively.</li>
-<li><tt>prefix</tt> &mdash; <strong>Textual representation prefix</strong>:
-A piece of text (or a formatted object) that should be prepended to
-<tt>text</tt>, but does not semantically belong to it itself. For example, a
-<tt><b>mention</b></tt> object would have a prefix containing the sigil
-character that introduced the mention.<br/>
-If multiple objects' members are composed (such as when an object has no
-<tt>text</tt> member but its <tt>content</tt> has), the combination of the
-<tt>prefix</tt>, <tt>text</tt>, and <tt>postfix</tt> of the <tt>content</tt>
-shall be treated as equivalent to the (absent) <tt>text</tt> member of the
-parent (<i>i.e.</i> the parent's <tt>prefix</tt> shall be prepended to the
-<tt>prefix</tt> of the child, <i>etc.</i>).</li>
-<li><tt>postfix</tt> &mdash; <strong>Textual representation postfix</strong>:
-The equivalent of <tt>prefix</tt> that should be appended to the
-<tt>text</tt>.</li>
+main content of the object. Can be of an arbitrary type (including a nested
+API object).</li>
 </ul>
 <p>The following fields apply mostly to top-level messages:</p>
 <ul>
@@ -212,6 +186,42 @@ unmodified. Use is optional.</li>
 of when roughly the current object was constructed. The value is a
 floating-point number; while the unit is a second, more precision may be
 available.</li>
+<li><tt>text</tt> &mdash; <strong>Textual representation</strong>: The
+server's preferred way of presenting the given object, as used for terminal
+clients. May be absent, indicating that the server does not honor this object
+with a textual representation. The value may be a string, or an array of
+strings and/or nested objects, which can have <tt>text</tt> fields as well.
+The emission of <tt>text</tt> fields is configurable (to save bandwidth) by
+updating the <tt><b>send-text</b></tt> variable.</li>
+<li><tt>prefix</tt> &mdash; <strong>Rich text prefix</strong>: A value
+similar to <tt>text</tt> that should be prepended to the latter.</li>
+<li><tt>suffix</tt> &mdash; <strong>Rich text suffix</strong>: A value
+similar to <tt>text</tt> that should be appended to the latter.</li>
+</ul>
+
+<h4>Resolving <tt>text</tt> members</h4>
+<p>To determine the (rich) textual representation of an object, the following
+cases shall be considered. In all cases, if <tt>prefix</tt> and/or
+<tt>suffix</tt> members are present on the object, their value should be
+pre-/appended to the textual representation of the object (or replace it
+if there is otherwise none).</p>
+<ul>
+<li>If the object has no <tt>text</tt> member, its representation is that of
+its <tt>content</tt> member, if that is present, otherwise there is
+none.</li>
+<li>If the object's <tt>text</tt> member is <tt>null</tt>, it has
+(explicitly) none. If <tt>prefix</tt> or <tt>suffix</tt> members are present
+nonetheless, the server has screwed up.</li>
+<li>If the object's <tt>text</tt> member is a string or the object itself is
+one, its representation is that.</li>
+<li>If the object's <tt>text</tt> member is an object, the textual
+representation is that of the nested object.</li>
+<li>If the object's <tt>text</tt> member is an array <small>(which then
+contains strings or nested objects)</small>, its representation is the
+concatenation of representations of the elements of that array, with markup
+optionally applied to the representations of any nested objects depending on
+their <tt>type</tt>.</li>
+<li>Otherwise, the server has screwed up.</li>
 </ul>
 
 <h3>Client commands</h3>
@@ -226,15 +236,16 @@ connectivity.</p>
 
 <h4><tt>query</tt></h4>
 <p>Asks the server to inform the client about some of its state.
-<tt>content</tt> is a <tt><b>variable</b></tt> without a <tt>value</tt>
-indicating what to query. The server returns either a
-<tt><b>success</b></tt> or a <tt><b>failure</b></tt>, depending on whether
-the request is valid, and whether the client is allowed to perform it.</p>
+<tt>content</tt> is a <tt><b>variable</b></tt> without a <tt>content</tt>
+indicating what to query (and which client to refer to, if a <tt>uid</tt>
+member is present). The server returns either a <tt><b>success</b></tt> or a
+<tt><b>failure</b></tt>, depending on whether the request is valid, and
+whether the client is allowed to perform it.</p>
 
 <h4><tt>update</tt></h4>
 <p>Asks the server to change some client state, similarly to
-<tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>value</tt>, which
-tells what to change the variable to. The reply is a modified
+<tt><b>query</b></tt>. The <tt>content</tt> contains a <tt>content</tt>,
+which tells what to change the variable to. The reply is a modified
 <tt><b>updated</b></tt> message in case of success, or a regular
 <tt><b>failure</b></tt>.</p>
 
@@ -247,11 +258,9 @@ tells what to change the variable to. The reply is a modified
 <tt><b>left</b></tt> is sent to the client as confirmation.</p>
 
 <h4><tt>send</tt></h4>
-<p>Sends a chat message. <tt>content</tt> is a <tt><b>post</b></tt>
-specifying what exactly to send. The <tt><b>post</b></tt>'s
-<tt>content</tt> may be a plain string, letting the server interpret it, and
-is in fact currently required to be like that. The server replies with a
-modified <tt><b>chat</b></tt>.</p>
+<p>Sends a chat message. <tt>content</tt> and <tt>variant</tt> specify what
+exactly to send; see <tt><b>post</b></tt> for explanations. <tt>content</tt>
+must currently be a string.</p>
 
 <h4><tt>quit</tt></h4>
 <p>Tells the server to remove the client from chat (if there) and to close
@@ -306,11 +315,11 @@ more details.</p>
 <h4><tt>variable</tt></h4>
 <p>A piece of information about a client. Fields:</p>
 <ul>
-<li><tt>name</tt> &mdash; <strong>Variable name</strong>: Indicates which
-variable is exactly meant.</li>
-<li><tt>value</tt> &mdash; <strong>Variable value</strong>: Contains the
+<li><tt>variant</tt> &mdash; <strong>Variable name</strong>: Indicates which
+variable exactly is meant.</li>
+<li><tt>content</tt> &mdash; <strong>Variable value</strong>: Contains the
 value the variable has. May be missing in queries.</li>
-<li><tt>id</tt> &mdash; <strong>Client identifier</strong>: An opaque
+<li><tt>uid</tt> &mdash; <strong>Client identifier</strong>: An opaque
 primitive value uniquely identifying a client. Currently an integer, but
 might become a string in the future. May be re-used after a client exits or
 server restarts. If omitted, either the current client is meant (in client
@@ -339,7 +348,7 @@ them. Can be used to save bandwidth.</li>
 <ul>
 <li><tt>code</tt> &mdash; <strong>Error code</strong>: A short alphanumeric
 string identifying the error in a machine-readable way.</li>
-<li><tt>text</tt> &mdash; <strong>Error message</strong>: A human-readable
+<li><tt>content</tt> &mdash; <strong>Error message</strong>: A human-readable
 explanation of the error; may be a string or an array of strings and objects
 as is generally the case with <tt>text</tt> members.</li>
 </ul>
@@ -366,13 +375,16 @@ Attributes</b> for explanation.</em></li>
 </ul>
 
 <h4><tt>user</tt></h4>
-<p>An individual chat participant. Extra fields are <tt>id</tt> and
-<tt>nick</tt>; see <tt><b>variable</b></tt> for definitions of the values.</p>
+<p>An individual chat participant. <tt>uid</tt> is the identifier of the
+client (see <tt><b>variable</b></tt> for details); <tt>content</tt> is the
+nickname of the user.</p>
 
 <h4><tt>mention</tt></h4>
-<p>An <tt>@</tt>-mention of a client. Appears inside the <tt>text</tt> of
-<tt><b>post</b></tt>-s. The <tt>content</tt> field identifies (partially) the
-<tt><b>user</b></tt> mentioned.</p>
+<p>An <tt>@</tt>-mention of a client. Similarly to <tt><b>user</b></tt>, the
+user's nickname (dissimilarly, with the preceding <tt>@</tt> sign retained)
+is stored in the <tt>content</tt> member; the <tt>uid</tt> member may be
+absent if it is not clear which user is exactly meant (<i>i.e.</i> always
+for now).</p>
 
 <h4><tt>hl</tt></h4>
 <p>A piece of text that does not carry particular semantical meaning, but
@@ -423,18 +435,13 @@ surrounding various parts of a chat post.
 <pre>
 <mark>&lt;</mark>Fred<mark>&gt;</mark> Hello!
 </pre></li>
-<li><tt>spc</tt> &mdash; <strong>Space</strong>: Characters used to separate
-different parts of the line.
-<pre>
-&lt;Fred&gt;<mark> </mark>Hello!
-</pre></li>
 </ul>
 
 <h4><tt>char</tt></h4>
-<p>A non-ASCII character encountered in a <tt><b>post</b></tt>. The
+<p>An unrecognized character encountered in a  <tt><b>post</b></tt>. The
 <tt>content</tt> field is a single-character string containing the original
-value; the <tt>text</tt> holds a replacement character (<i>e.g.</i>, a
-<tt>?</tt>).</p>
+value as the character code; the <tt>text</tt> holds a replacement character
+(<i>e.g.</i>, a <tt>?</tt>).</p>
 
     </article>
     <hr/>
