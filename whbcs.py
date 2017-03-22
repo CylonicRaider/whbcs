@@ -81,54 +81,41 @@ ERRORS = {
     'VARRO': 'Variable is read-only.',
     }
 def make_error(code, wrap=False):
-    err = {'type': 'error', 'code': code, 'text': ERRORS[code]}
+    err = {'type': 'error', 'code': code, 'content': ERRORS[code]}
     return {'type': 'failure', 'content': err} if wrap else err
 
 # Text member generation.
 def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
-_stsp = (_mkhl('msgpad', '*'), _mkhl('spc', ' '))
+_star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
 def _format_updated(obj):
-    if obj['content']['name'] == 'nick' and 'value' in obj['from']:
+    if obj['content']['variant'] == 'nick' and 'content' in obj['from']:
         format_text(obj['from'])
         return (_stsp, _mkhl('msgtext', (obj['from'], ' is now ',
                                          obj['content'])), None)
-def _format_variable(obj):
-    if obj['name'] == 'nick':
-        return (None, obj['value'], None)
 def _format_post(obj):
-    return ((_mkhl('chatpad', '<'), obj['sender'], _mkhl('chatpad', '>'),
-             _stsp[1]), None, None)
-OBJECT_TEXTS = {'pong': {
-        'prefix': _mkhl('reply', 'PONG')
-    }, 'success': {
-        'prefix': _mkhl('reply', 'OK')
-    }, 'failure': {
-        'prefix': _mkhl('reply', 'FAIL')
-    }, 'updated': {
-        'func': _format_updated
-    }, 'joined': {
-        'prefix': _stsp,
-        'postfix': (_stsp[1], _mkhl('msgtext', 'has joined'))
-    }, 'left': {
-        'prefix': _stsp,
-        'postfix': (_stsp[1], _mkhl('msgtext', 'has left')),
+    return {'prefix': (_mkhl('chatpad', '<'), obj['sender'],
+                       _mkhl('chatpad', '>'), ' ')}
+OBJECT_TEXTS = {
+    'pong': {'prefix': _mkhl('reply', 'PONG')},
+    'success': {'prefix': _mkhl('reply', 'OK')},
+    'failure': {'prefix': _mkhl('reply', 'FAIL')},
+    'updated': {'func': _format_updated},
+    'joined': {
+        'prefix': (_star, ' '),
+        'suffix': (' ', _mkhl('msgtext', 'has joined'))
+    },
+    'left': {
+        'prefix': (_star, ' '),
+        'suffix': (' ', _mkhl('msgtext', 'has left')),
         'variant': {
             'abrupt': {
-                'prefix': _stsp,
-                'postfix': (_stsp[1], _mkhl('msgerr',
-                                            'has left unexpectedly'))
+                'prefix': (_star, ' '),
+                'suffix': (' ', _mkhl('msgerr', 'has left unexpectedly'))
             }
         }
-    }, 'sysmsg': {
-        'func': lambda obj: ((_mkhl('syspad', '***'), _stsp[1]),
-                             obj['text'], None)
-    }, 'variable': {
-        'func': _format_variable
-    }, 'post': {
-        'func': _format_post
-    }, 'user': {
-        'func': lambda obj: (None, obj['nick'], None)
-    }}
+    },
+    'sysmsg': {'prefix': (_stars, ' ')},
+    'post': {'func': _format_post}}
 def format_text(obj, _table=None):
     try:
         info = _table[obj['type']]
@@ -136,7 +123,7 @@ def format_text(obj, _table=None):
         info = OBJECT_TEXTS.get(obj.get('type'))
     try:
         info = info['variant'][obj['variant']]
-    except KeyError:
+    except (TypeError, KeyError):
         pass
     if not info:
         return
@@ -146,14 +133,10 @@ def format_text(obj, _table=None):
         if cntinfo: info = cntinfo
     if 'func' in info:
         res = info['func'](obj)
-        if res is not None:
-            if res[0]: obj['prefix']  = res[0]
-            if res[1]: obj['text']    = res[1]
-            if res[2]: obj['postfix'] = res[2]
-    else:
-        for attr in ('prefix', 'text', 'postfix'):
-            if attr not in info: continue
-            obj[attr] = info[attr]
+        if res: info = dict(info, **res)
+    for attr in ('prefix', 'text', 'postfix'):
+        if attr not in info: continue
+        obj[attr] = info[attr]
     return info.get('parent')
 
 # Server socket processing.
@@ -247,8 +230,8 @@ class ChatDistributor:
             self.discipline.deliver(message)
 
         def _user_info(self):
-            return {'type': 'user', 'id': self.id,
-                    'nick': self.vars['nickname']}
+            return {'type': 'user', 'uid': self.id,
+                    'content': self.vars['nick']}
 
         def submit(self, message):
             def reply(msg):
@@ -256,18 +239,15 @@ class ChatDistributor:
                     msg['seq'] = message['seq']
                 self.deliver(msg)
             def broadcast(msg):
-                if message.get('seq') is not None:
-                    self.distributor.broadcast(msg, {self.id: {'seq':
-                        message['seq']}})
-                else:
-                    self.distributor.broadcast(msg)
+                self.distributor.broadcast(msg, {self.id: {'seq':
+                    message.get('seq')}})
             if message['type'] == 'ping':
                 reply({'type': 'pong'})
             elif message['type'] == 'query':
                 reply(self.query_var(message['content']))
             elif message['type'] == 'update':
                 res = self.update_var(message['content'])
-                desc = self.VARS[res['content']['name']]
+                desc = self.VARS[res['content']['variant']]
                 if res['type'] == 'updated' and not desc['private']:
                     broadcast(res)
                 else:
@@ -318,10 +298,10 @@ class ChatDistributor:
 
         def query_var(self, variable):
             try:
-                desc = self.VARS[variable['name']]
+                desc = self.VARS[variable['variant']]
             except KeyError:
                 return make_error('NOVAR', True)
-            cltid = variable.get('id', self.id)
+            cltid = variable.get('uid', self.id)
             if cltid != self.id and desc['private']:
                 return make_error('VARPRIV', True)
             try:
@@ -329,33 +309,34 @@ class ChatDistributor:
             except KeyError:
                 return make_error('NOCLNT', True)
             try:
-                value = hnd.vars[variable['name']]
+                value = hnd.vars[variable['variant']]
             except KeyError:
                 return make_error('NOVAL', True)
             return {'type': 'success', 'content': {'type': 'variable',
-                'id': cltid, 'name': variable['name'], 'value': value}}
+                'variant': variable['variant'], 'uid': cltid,
+                'content': value}}
 
         def update_var(self, variable):
             try:
-                desc = self.VARS[variable['name']]
+                desc = self.VARS[variable['variant']]
             except KeyError:
                 return make_error('NOVAR', True)
-            cltid = variable.get('id', self.id)
+            cltid = variable.get('uid', self.id)
             if cltid != self.id or not desc['rw']:
                 return make_error('VARRO', True)
             try:
-                value = desc['type'](variable['value'])
+                value = desc['type'](variable['content'])
             except ValueError:
                 return make_error('BADVAL', True)
-            oldvar = {'type': 'variable', 'id': self.id,
-                      'name': variable['name']}
+            oldvar = {'type': 'variable', 'variant': variable['variant'],
+                      'uid': self.id}
             try:
-                oldvar['value'] = self.vars[variable['name']]
+                oldvar['content'] = self.vars[variable['variant']]
             except KeyError:
                 pass
-            self.vars[variable['name']] = value
+            self.vars[variable['variant']] = value
             return {'type': 'updated', 'from': oldvar,
-                'content': dict(oldvar, value=value)}
+                'content': dict(oldvar, content=value)}
 
     def __init__(self, server):
         self.server = server
@@ -384,10 +365,7 @@ class ChatDistributor:
             else:
                 handler.deliver(msg)
         def broadcast(msg):
-            if message.get('seq') is not None:
-                self.broadcast(msg, {handler.id: {'seq': message['seq']}})
-            else:
-                self.broadcast(msg)
+            self.broadcast(msg, {handler.id: {'seq': message.get('seq')}})
         if message['type'] == 'send':
             np = self._process_post(message['content'])
             broadcast({'type': 'chat', 'content': np})
@@ -505,9 +483,9 @@ class DoorstepLineDiscipline(LineDiscipline):
             self.println('OK')
         elif (message['type'] == 'success' and
                 message['content']['type'] == 'variable'):
-            self.println('OK', '#', message['content']['value'])
+            self.println('OK', '#', message['content']['content'])
         elif message['type'] == 'failure':
-            self.println('FAIL', '#', message['content']['text'])
+            self.println('FAIL', '#', message['content']['content'])
 
     def format_help(self, cmd=None, long=False):
         sp = lambda x, s=' ': s if x else ''
@@ -566,18 +544,18 @@ class DoorstepLineDiscipline(LineDiscipline):
                 self.println('PONG')
             elif tokens[0] == '/term':
                 if len(tokens) == 1:
-                    self._submit('query', type='variable', name='term')
+                    self._submit('query', type='variable', variant='term')
                 elif len(tokens) == 2 and tokens[1] in ('dumb', 'ansi'):
-                    self._submit('update', type='variable', name='term',
-                                 value=tokens[1])
+                    self._submit('update', type='variable', variant='term',
+                                 content=tokens[1])
                 else:
                     usage()
             elif tokens[0] == '/nick':
                 if len(tokens) == 1:
-                    self._submit('query', type='variable', name='nick')
+                    self._submit('query', type='variable', variant='nick')
                 elif len(tokens) == 2:
-                    self._submit('update', type='variable', name='nick',
-                                 value=tokens[1])
+                    self._submit('update', type='variable', variant='nick',
+                                 content=tokens[1])
                 else:
                     usage()
             elif tokens[0].startswith('/'):
