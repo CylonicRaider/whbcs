@@ -266,12 +266,12 @@ class ChatDistributor:
                     reply(make_error('ALEFT', True))
                 else:
                     self.vars['joined'] = False
-                    broadcast({'type': 'left',
+                    broadcast({'type': 'left', 'variant': 'normal',
                                'content': self._user_info()})
             elif message['type'] == 'quit':
                 if self.vars['joined']:
                     self.vars['joined'] = False
-                    broadcast({'type': 'left',
+                    broadcast({'type': 'left', 'variant': 'normal',
                                'content': self._user_info()})
                 self.close()
             else:
@@ -280,6 +280,10 @@ class ChatDistributor:
         def close(self):
             if not self._closing:
                 self._closing = True
+                if self.vars['joined']:
+                    self.vars['joined'] = False
+                    broadcast({'type': 'left', 'variant': 'abrupt',
+                               'content': self._user_info()})
                 silence(self.discipline.quit, True)
                 self.distributor._remove_handler(self)
                 self.endpoint.close()
