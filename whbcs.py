@@ -148,6 +148,76 @@ def format_text(obj, _table=None):
         obj[attr] = info[attr]
     return info.get('parent')
 
+# Flatten the textual representation info of obj into a (non-nested) list.
+def flatten_text(obj):
+    # Traverse input.
+    def scrape(obj):
+        if obj is None:
+            pass
+        elif isinstance(obj, str):
+            yield obj
+        elif isinstance(obj, (tuple, list)):
+            for i in obj:
+                for j in scrape(j):
+                    yield j
+        elif isinstance(obj, dict):
+            intr = {'type': obj['type']}
+            if 'variant' in obj:
+                intr['variant'] = obj['variant']
+            yield intr
+            if 'prefix' in obj:
+                for i in scrape(obj['prefix']):
+                    yield i
+            if 'text' in obj:
+                for i in scrape(obj['text']):
+                    yield i
+            elif 'content' in obj:
+                for i in scrape(obj['content']):
+                    yield i
+            if 'suffix' in obj:
+                for i in scrape(obj['suffix']):
+                    yield i
+            yield {}
+        else:
+            raise TypeError('Bad input for flatten_text: %r' % (obj,))
+    # Turn stacked states into flat state replacements.
+    stack, ret = [], []
+    for i in scrape(obj):
+        if not isinstance(i, dict):
+            ret.append(i)
+        elif i:
+            stack.append(i)
+            ret.append(i)
+        elif len(stack) > 1:
+            stack.pop()
+            ret.append(stack[-1])
+        else:
+            ret.append(i)
+    return ret
+
+# Render the textual representation of obj into a single string with embedded
+# formatting instructions for term (or none if that is None).
+STYLES = {}
+def render_text(obj, term=None):
+    if term is not None:
+        styles = STYLES[term]
+    else:
+        styles = None
+    ret = []
+    for i in flatten_text(obj):
+        if isinstance(i, string):
+            ret.append(i)
+        elif term is None:
+            pass
+        else:
+            item = styles.get(i.get('type'))
+            if isinstance(item, dict):
+                newitem = item.get(i.get('variant'))
+                if newitem: item = newitem
+            if not item: item = styles[None]
+            ret.append(item)
+    return ''.join(ret)
+
 # Server socket processing.
 # Responsible for accepting connections, logging those, spawning Endpoint-s
 # for them.
