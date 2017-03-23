@@ -510,7 +510,7 @@ class DoorstepLineDiscipline(LineDiscipline):
             return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
 
     def _submit(_self, _type, **_content):
-        _self.seq += 1
+        _self.seq -= 1
         return _self.submit({'type': _type, 'seq': _self.seq,
                              'content': _content})
 
