@@ -669,6 +669,9 @@ class DumbLineDiscipline(LineDiscipline):
             ('ping', '', 'Check connectivity.', ''),
             ('nick', '[name]', 'Query/Set nickname.', ''),
             ('join', '', 'Join chat', ''),
+            ('say', '<messgae>', 'Post a message.',
+                 '...If the message starts with a slash.'),
+            ('me', '<message>', 'Post an emote message.', ''),
             ('leave', '', 'Leave chat', ''),
             ('quit', '', 'Terminate connection.', ''))
     HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
@@ -700,15 +703,28 @@ class DumbLineDiscipline(LineDiscipline):
         self.println('# Bye!')
 
     def __call__(self):
+        format_help = DoorstepLineDiscipline.format_help
         def interpret(line):
             def usage():
-                self.println('FAIL', DoorstepLineDiscipline.format_help(self,
-                    tokens[0].lstrip('/')))
+                self.println('FAIL', format_help(self,
+                                                 tokens[0].lstrip('/')))
             sline = line.strip()
             if not sline: return
-            tokens = Token.extract(line)
+            tokens = Token.extract(sline)
             if tokens[0] == '/help':
-                self.println('# NYI')
+                if len(tokens) == 1:
+                    self.println('OK', format_help(self, None, False))
+                elif len(tokens) == 2:
+                    cmd = tokens[1]
+                    if cmd.startswith('/'):
+                        cmd = cmd[1:]
+                    if cmd in self.HELPDICT:
+                        self.println('OK', self.format_help(self, cmd, True))
+                    else:
+                        self.println('FAIL', '#', 'Unknown command /%s.' %
+                                     cmd)
+                else:
+                    usage()
             elif tokens[0] == '/ping':
                 if len(tokens) != 1: return usage()
                 self.println('PONG')
@@ -722,6 +738,12 @@ class DumbLineDiscipline(LineDiscipline):
                     usage()
             elif tokens[0] == '/join':
                 self.println('FAIL', '#', 'Already joined.')
+            elif tokens[0] == '/say':
+                rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
+                self._submit('send', variant='normal', content=rest)
+            elif tokens[0] == '/me':
+                rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
+                self._submit('send', variant='emote', content=rest)
             elif tokens[0] == '/leave':
                 self._submit('leave')
                 return True
