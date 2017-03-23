@@ -6,7 +6,7 @@
 APPNAME = 'WHBCS'
 VERSION = '2.0-pre'
 
-import sys, os, re, socket
+import sys, os, re, time, socket
 import threading
 import signal
 import logging
@@ -233,10 +233,14 @@ class ChatDistributor:
             return {'type': 'user', 'uid': self.id,
                     'content': self.vars['nick']}
 
+        def _process_post(self, msg):
+            return {'type': 'post', 'variant': msg['variant'],
+                    'sender': self._user_info(), 'timestamp': time.time(),
+                    'content': msg['content']}
+
         def submit(self, message):
             def reply(msg):
-                if message.get('seq') is not None:
-                    msg['seq'] = message['seq']
+                msg['seq'] = message.get('seq')
                 self.deliver(msg)
             def broadcast(msg):
                 self.distributor.broadcast(msg, {self.id: {'seq':
@@ -261,6 +265,9 @@ class ChatDistributor:
                     self.vars['joined'] = True
                     broadcast({'type': 'joined',
                                'content': self._user_info()})
+            elif message['type'] == 'send':
+                broadcast({'type': 'chat',
+                           'content': self._process_post(message)})
             elif message['type'] == 'leave':
                 if not self.vars['joined']:
                     reply(make_error('ALEFT', True))
@@ -359,22 +366,11 @@ class ChatDistributor:
         with self.lock:
             return self.handlers[id]
 
-    def _process_post(self, post):
-        return post
-
     def handle(self, handler, message):
         def reply(msg):
-            if message.get('seq') is not None:
-                handler.deliver(dict(msg, seq=message['seq']))
-            else:
-                handler.deliver(msg)
-        def broadcast(msg):
-            self.broadcast(msg, {handler.id: {'seq': message.get('seq')}})
-        if message['type'] == 'send':
-            np = self._process_post(message['content'])
-            broadcast({'type': 'chat', 'content': np})
-        else:
-            reply(make_error('NOTYPE', True))
+            msg['seq'] = message.get('seq')
+            handler.deliver(msg)
+        reply(make_error('NOTYPE', True))
 
     def broadcast(self, message, amend=None):
         if amend is None: amend = {}
