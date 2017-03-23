@@ -8,7 +8,7 @@ VERSION = '2.0-pre'
 
 import sys, os, re, time, socket
 import threading
-import signal
+import errno, signal
 import logging
 
 try:
@@ -96,9 +96,12 @@ _star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
 def _format_updated(obj):
     if obj['content']['variant'] == 'nick' and 'content' in obj['from']:
         format_text(obj['from'])
-        return (_stsp, _mkhl('msgtext', (obj['from'], ' is now ',
-                                         obj['content'])), None)
+        return {'prefix': (_star, ' '), 'text': _mkhl('msgtext',
+              (obj['from'], ' is now ', obj['content']))}
+    else:
+        return {'text': None}
 def _format_post(obj):
+    format_text(obj['sender'])
     if obj['variant'] == 'emote':
         return {'prefix': (_star, ' ', obj['sender'], ' ')}
     else:
@@ -134,16 +137,16 @@ def format_text(obj, _table=None):
         info = info['variant'][obj['variant']]
     except (TypeError, KeyError):
         pass
-    if not info:
-        return
     cnt = obj.get('content')
     if isinstance(cnt, dict) and 'type' in cnt:
-        cntinfo = format_text(cnt, info.get('content'))
+        cntinfo = format_text(cnt, info.get('content') if info else None)
         if cntinfo: info = cntinfo
+    if not info:
+        return
     if 'func' in info:
         res = info['func'](obj)
         if res: info = dict(info, **res)
-    for attr in ('prefix', 'text', 'postfix'):
+    for attr in ('prefix', 'text', 'suffix'):
         if attr not in info: continue
         obj[attr] = info[attr]
     return info.get('parent')
@@ -507,9 +510,12 @@ class LineDiscipline:
         if self.encoding:
             data = data.encode(self.encoding, errors=self.errors)
         with self.olock:
-            if self.handler._closing: return
-            self.handler.endpoint.file.write(data)
-            self.handler.endpoint.file.flush()
+            try:
+                self.handler.endpoint.file.write(data)
+                self.handler.endpoint.file.flush()
+            except IOError as e:
+                if e.errno == errno.EPIPE: return
+                raise
     def println(self, *args, **kwds):
         if self.encoding:
             d = kwds.get('sep', ' ').join(args) + kwds.get('end', '\n')
@@ -696,10 +702,14 @@ class DumbLineDiscipline(LineDiscipline):
         text = render_text(message)
         if not text: return
         if self.newline: text = '\n' + text
-        self.newline = True
-        self.println(text, end='')
+        with self.lock:
+            self.newline = True
+            self.println(text, end='')
 
     def deliver(self, message):
+        if (message['type'] == 'chat' and
+                message['content']['sender']['uid'] == self.handler.id):
+            return # Own chat messages already printed.
         with self.lock:
             if self.busy:
                 self.pending.put(message)
@@ -707,15 +717,19 @@ class DumbLineDiscipline(LineDiscipline):
                 self._deliver(message)
 
     def quit(self, last):
-        self.println('# Bye!')
+        with self.lock:
+            text = '# Bye!'
+            if self.newline: text = '\n' + text
+            self.println(text)
 
     def __call__(self):
         format_help = DoorstepLineDiscipline.format_help
         def println(*args):
             line = ' '.join(args)
-            if self.newline: line = '\n' + line
-            self.newline = True
-            self.println(line, end='')
+            with self.lock:
+                if self.newline: line = '\n' + line
+                self.newline = True
+                self.println(line, end='')
         def interpret(line):
             def usage():
                 println('FAIL', format_help(self, tokens[0].lstrip('/')))
@@ -773,8 +787,6 @@ class DumbLineDiscipline(LineDiscipline):
                     self._deliver(self.pending.get(False))
                 except queue.Empty:
                     break
-        self.busy = False
-        self.newline = False
         while 1:
             deliver()
             line = self.readline()
@@ -782,7 +794,11 @@ class DumbLineDiscipline(LineDiscipline):
             self.newline = False
             if interpret(line): break
             deliver()
-            self.busy ^= True
+            with self.lock:
+                self.busy ^= True
+                if self.busy:
+                    self.println('<' + self.handler.vars['nick'] + '> ',
+                                 end='')
         deliver()
         return None
 
