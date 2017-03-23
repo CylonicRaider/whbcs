@@ -646,7 +646,9 @@ class DoorstepLineDiscipline(LineDiscipline):
                     continue
                 elif 'term' not in self.vars:
                     self.println('FAIL', '#', 'You have not set a terminal.')
-                elif self.vars['term'] in ('dumb', 'ansi'):
+                elif self.vars['term'] == 'dumb':
+                    return DumbLineDiscipline(self.endpoint)
+                elif self.vars['term'] == 'ansi':
                     self.println('FAIL', '#', 'NYI')
                 else:
                     self.println('FAIL', '#', 'Internal error?!')
@@ -663,6 +665,13 @@ class DoorstepLineDiscipline(LineDiscipline):
 # Dumb mode.
 # For the poor people who are left without anything.
 class DumbLineDiscipline(LineDiscipline):
+    HELP = (('help', '[command]', 'Display help.', ''),
+            ('ping', '', 'Check connectivity.', ''),
+            ('nick', '[name]', 'Query/Set nickname.', ''),
+            ('join', '', 'Join chat', ''),
+            ('leave', '', 'Leave chat', ''),
+            ('quit', '', 'Terminate connection.', ''))
+    HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
 
     def __init__(self, endpoint):
         LineDiscipline.__init__(self, endpoint)
@@ -676,21 +685,72 @@ class DumbLineDiscipline(LineDiscipline):
         self.println('# Press Return to write a message.')
         self._submit('join')
 
+    def _deliver(self, message):
+        text = render_text(message)
+        if text: self.println(text)
+
     def deliver(self, message):
         with self.lock:
             if self.busy:
                 self.pending.append(message)
             else:
-                pass # NYI
+                self._deliver(message)
 
     def quit(self, last):
         self.println('# Bye!')
 
     def __call__(self):
+        def interpret(line):
+            def usage():
+                self.println('FAIL', DoorstepLineDiscipline.format_help(self,
+                    tokens[0].lstrip('/')))
+            sline = line.strip()
+            if not sline: return
+            tokens = Token.extract(line)
+            if tokens[0] == '/help':
+                self.println('# NYI')
+            elif tokens[0] == '/ping':
+                if len(tokens) != 1: return usage()
+                self.println('PONG')
+            elif tokens[0] == '/nick':
+                if len(tokens) == 1:
+                    self._submit('query', type='variable', variant='nick')
+                elif len(tokens) == 2:
+                    self._submit('update', type='variable', variant='nick',
+                                 content=tokens[1])
+                else:
+                    usage()
+            elif tokens[0] == '/join':
+                self.println('FAIL', '#', 'Already joined.')
+            elif tokens[0] == '/leave':
+                self._submit('leave')
+                return True
+            elif tokens[0] == '/quit':
+                self._submit('quit')
+                return True
+            elif tokens[0].startswith('/'):
+                self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
+            else:
+                self._submit('send', variant='normal', content=sline)
+        def deliver():
+            while 1:
+                try:
+                    self._deliver(self.pending.get(False))
+                except queue.Empty:
+                    break
+                newline = True
+        newline = False
+        self.busy = False
         while 1:
+            deliver()
             line = self.readline()
-            if not line: return None
-            # NYI
+            if not line: break
+            newline = False
+            if interpret(line): break
+            deliver()
+            self.busy ^= True
+        deliver()
+        return None
 
 def main():
     # Interrupt execution
