@@ -158,7 +158,7 @@ def flatten_text(obj):
             yield obj
         elif isinstance(obj, (tuple, list)):
             for i in obj:
-                for j in scrape(j):
+                for j in scrape(i):
                     yield j
         elif isinstance(obj, dict):
             intr = {'type': obj['type']}
@@ -205,7 +205,7 @@ def render_text(obj, term=None):
         styles = None
     ret = []
     for i in flatten_text(obj):
-        if isinstance(i, string):
+        if isinstance(i, str):
             ret.append(i)
         elif term is None:
             pass
@@ -368,8 +368,8 @@ class ChatDistributor:
                 self._closing = True
                 if self.vars['joined']:
                     self.vars['joined'] = False
-                    broadcast({'type': 'left', 'variant': 'abrupt',
-                               'content': self._user_info()})
+                    self.distributor.broadcast({'type': 'left',
+                        'variant': 'abrupt', 'content': self._user_info()})
                 silence(self.discipline.quit, True)
                 self.distributor._remove_handler(self)
                 self.endpoint.close()
@@ -507,6 +507,7 @@ class LineDiscipline:
         if self.encoding:
             data = data.encode(self.encoding, errors=self.errors)
         with self.olock:
+            if self.handler._closing: return
             self.handler.endpoint.file.write(data)
             self.handler.endpoint.file.flush()
     def println(self, *args, **kwds):
@@ -568,8 +569,8 @@ class DoorstepLineDiscipline(LineDiscipline):
             a, o, d = cls.HELPDICT[cmd]
             return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
 
-    def __init__(self, endpoint):
-        LineDiscipline.__init__(self, endpoint)
+    def __init__(self, handler):
+        LineDiscipline.__init__(self, handler)
         self.encoding = 'ascii'
         self.errors = 'replace'
 
@@ -644,11 +645,13 @@ class DoorstepLineDiscipline(LineDiscipline):
                 if len(tokens) != 1:
                     usage()
                     continue
-                elif 'term' not in self.vars:
+                elif 'term' not in self.handler.vars:
                     self.println('FAIL', '#', 'You have not set a terminal.')
-                elif self.vars['term'] == 'dumb':
-                    return DumbLineDiscipline(self.endpoint)
-                elif self.vars['term'] == 'ansi':
+                elif 'nick' not in self.handler.vars:
+                    self.println('FAIL', '#', 'You have not set a nickname.')
+                elif self.handler.vars['term'] == 'dumb':
+                    return DumbLineDiscipline(self.handler)
+                elif self.handler.vars['term'] == 'ansi':
                     self.println('FAIL', '#', 'NYI')
                 else:
                     self.println('FAIL', '#', 'Internal error?!')
@@ -682,6 +685,7 @@ class DumbLineDiscipline(LineDiscipline):
         self.errors = 'replace'
         self.pending = queue.Queue()
         self.busy = False
+        self.newline = False
         self.lock = threading.RLock()
 
     def init(self, first):
@@ -690,12 +694,15 @@ class DumbLineDiscipline(LineDiscipline):
 
     def _deliver(self, message):
         text = render_text(message)
-        if text: self.println(text)
+        if not text: return
+        if self.newline: text = '\n' + text
+        self.newline = True
+        self.println(text, end='')
 
     def deliver(self, message):
         with self.lock:
             if self.busy:
-                self.pending.append(message)
+                self.pending.put(message)
             else:
                 self._deliver(message)
 
@@ -704,30 +711,33 @@ class DumbLineDiscipline(LineDiscipline):
 
     def __call__(self):
         format_help = DoorstepLineDiscipline.format_help
+        def println(*args):
+            line = ' '.join(args)
+            if self.newline: line = '\n' + line
+            self.newline = True
+            self.println(line, end='')
         def interpret(line):
             def usage():
-                self.println('FAIL', format_help(self,
-                                                 tokens[0].lstrip('/')))
+                println('FAIL', format_help(self, tokens[0].lstrip('/')))
             sline = line.strip()
             if not sline: return
             tokens = Token.extract(sline)
             if tokens[0] == '/help':
                 if len(tokens) == 1:
-                    self.println('OK', format_help(self, None, False))
+                    println('OK', format_help(self, None, False))
                 elif len(tokens) == 2:
                     cmd = tokens[1]
                     if cmd.startswith('/'):
                         cmd = cmd[1:]
                     if cmd in self.HELPDICT:
-                        self.println('OK', self.format_help(self, cmd, True))
+                        println('OK', self.format_help(self, cmd, True))
                     else:
-                        self.println('FAIL', '#', 'Unknown command /%s.' %
-                                     cmd)
+                        println('FAIL', '#', 'Unknown command /%s.' % cmd)
                 else:
                     usage()
             elif tokens[0] == '/ping':
                 if len(tokens) != 1: return usage()
-                self.println('PONG')
+                println('PONG')
             elif tokens[0] == '/nick':
                 if len(tokens) == 1:
                     self._submit('query', type='variable', variant='nick')
@@ -737,13 +747,15 @@ class DumbLineDiscipline(LineDiscipline):
                 else:
                     usage()
             elif tokens[0] == '/join':
-                self.println('FAIL', '#', 'Already joined.')
+                println('FAIL', '#', 'Already joined.')
             elif tokens[0] == '/say':
                 rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
-                self._submit('send', variant='normal', content=rest)
+                self.submit({'type': 'send', 'variant': 'normal',
+                             'content': rest})
             elif tokens[0] == '/me':
                 rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
-                self._submit('send', variant='emote', content=rest)
+                self.submit({'type': 'send', 'variant': 'emote',
+                             'content': rest})
             elif tokens[0] == '/leave':
                 self._submit('leave')
                 return True
@@ -751,23 +763,23 @@ class DumbLineDiscipline(LineDiscipline):
                 self._submit('quit')
                 return True
             elif tokens[0].startswith('/'):
-                self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
+                println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
-                self._submit('send', variant='normal', content=sline)
+                self.submit({'type': 'send', 'variant': 'normal',
+                             'content': sline})
         def deliver():
             while 1:
                 try:
                     self._deliver(self.pending.get(False))
                 except queue.Empty:
                     break
-                newline = True
-        newline = False
         self.busy = False
+        self.newline = False
         while 1:
             deliver()
             line = self.readline()
             if not line: break
-            newline = False
+            self.newline = False
             if interpret(line): break
             deliver()
             self.busy ^= True
