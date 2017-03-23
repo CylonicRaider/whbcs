@@ -229,7 +229,7 @@ class ChatDistributor:
             distributor._add_handler(self)
 
         def deliver(self, message):
-            format_text(message)
+            if self.vars['send-text']: format_text(message)
             self.discipline.deliver(message)
 
         def _user_info(self):
