@@ -93,8 +93,11 @@ def _format_updated(obj):
         return (_stsp, _mkhl('msgtext', (obj['from'], ' is now ',
                                          obj['content'])), None)
 def _format_post(obj):
-    return {'prefix': (_mkhl('chatpad', '<'), obj['sender'],
-                       _mkhl('chatpad', '>'), ' ')}
+    if obj['variant'] == 'emote':
+        return {'prefix': (_star, ' ', obj['sender'], ' ')}
+    else:
+        return {'prefix': (_mkhl('chatpad', '<'), obj['sender'],
+                           _mkhl('chatpad', '>'), ' ')}
 OBJECT_TEXTS = {
     'pong': {'prefix': _mkhl('reply', 'PONG')},
     'success': {'prefix': _mkhl('reply', 'OK')},
