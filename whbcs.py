@@ -72,6 +72,7 @@ ERRORS = {
     'AJOINED': 'Already joined.',
     'ALEFT': 'Already left.',
     'BADVAL': 'Bad value.',
+    'INTER': 'Internal error?!',
     'NOCLNT': 'No such client.',
     'NORDY': 'Not ready.',
     'NOTYPE': 'No such message type.',
@@ -464,7 +465,8 @@ class DoorstepLineDiscipline(LineDiscipline):
             ('term', '[dumb|ansi]', 'Query/Set terminal type.',
                  'dumb -- Minimalistic mode.\n'
                  'ansi -- Advanced escape sequences.'),
-            ('nick', '[name]', 'Query/Set nickname.', ''))
+            ('nick', '[name]', 'Query/Set nickname.', ''),
+            ('join', '', 'Join chat', ''))
     HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
 
     def __init__(self, endpoint):
@@ -561,6 +563,21 @@ class DoorstepLineDiscipline(LineDiscipline):
                                  content=tokens[1])
                 else:
                     usage()
+            elif tokens[0] == '/join':
+                if len(tokens) != 1:
+                    usage()
+                    continue
+                elif 'term' not in self.vars:
+                    self.println('FAIL', '#', 'You have not set a terminal.')
+                elif self.vars['term'] in ('dumb', 'ansi'):
+                    self.println('FAIL', '#', 'NYI')
+                else:
+                    self.println('FAIL', '#', 'Internal error?!')
+            elif tokens[0] == '/leave':
+                if len(tokens) != 1:
+                    usage()
+                    continue
+                self.println('FAIL', '#', 'You have not joined.')
             elif tokens[0].startswith('/'):
                 self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
