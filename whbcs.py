@@ -480,6 +480,24 @@ class DoorstepLineDiscipline(LineDiscipline):
             ('join', '', 'Join chat', ''))
     HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
 
+    @staticmethod
+    def format_help(cls, cmd=None, long=False):
+        sp = lambda x, s=' ': s if x else ''
+        rf = lambda x: '# ' + x.replace('\n', '\n# ') + '\n' if x else '\n'
+        if cmd is None:
+            ret = ['# HELP\n']
+            for c, a, o, d in cls.HELP:
+                ret.extend(('# /', c, sp(a), a, sp(o, ' -- '), o, '\n'))
+                if long and d: ret.append(rf(d))
+            return ''.join(ret).rstrip('\n')
+        elif long:
+            a, o, d = cls.HELPDICT[cmd]
+            return ('# USAGE: /%s%s%s%s%s%s%s' % (cmd, sp(a), a,
+                sp(o, ' -- '), o, sp(d, '\n'), rf(d))).rstrip('\n')
+        else:
+            a, o, d = cls.HELPDICT[cmd]
+            return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
+
     def __init__(self, endpoint):
         LineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
@@ -502,26 +520,10 @@ class DoorstepLineDiscipline(LineDiscipline):
         elif message['type'] == 'failure':
             self.println('FAIL', '#', message['content']['content'])
 
-    def format_help(self, cmd=None, long=False):
-        sp = lambda x, s=' ': s if x else ''
-        rf = lambda x: '# ' + x.replace('\n', '\n# ') + '\n' if x else '\n'
-        if cmd is None:
-            ret = ['# HELP\n']
-            for c, a, o, d in self.HELP:
-                ret.extend(('# /', c, sp(a), a, sp(o, ' -- '), o, '\n'))
-                if long and d: ret.append(rf(d))
-            return ''.join(ret).rstrip('\n')
-        elif long:
-            a, o, d = self.HELPDICT[cmd]
-            return ('# USAGE: /%s%s%s%s%s%s%s' % (cmd, sp(a), a,
-                sp(o, ' -- '), o, sp(d, '\n'), rf(d))).rstrip('\n')
-        else:
-            a, o, d = self.HELPDICT[cmd]
-            return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
-
     def __call__(self):
         def usage():
-            self.println('FAIL', self.format_help(tokens[0].lstrip('/')))
+            self.println('FAIL', self.format_help(self,
+                                                  tokens[0].lstrip('/')))
         while 1:
             tokens = self.readline_words()
             if tokens is None:
@@ -530,13 +532,13 @@ class DoorstepLineDiscipline(LineDiscipline):
                 pass
             elif tokens[0] == '/help':
                 if len(tokens) == 1:
-                    self.println('OK', self.format_help(None, False))
+                    self.println('OK', self.format_help(self, None, False))
                 elif len(tokens) == 2:
                     cmd = tokens[1]
                     if cmd.startswith('/'):
                         cmd = cmd[1:]
                     if cmd in self.HELPDICT:
-                        self.println('OK', self.format_help(cmd, True))
+                        self.println('OK', self.format_help(self, cmd, True))
                     else:
                         self.println('FAIL', '#', 'Unknown command /%s.' %
                                      cmd)
