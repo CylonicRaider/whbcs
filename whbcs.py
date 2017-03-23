@@ -11,6 +11,11 @@ import threading
 import signal
 import logging
 
+try:
+    import Queue as queue
+except ImportError:
+    import queue
+
 HOST = ''
 PORT = 4321
 REUSE_ADDR = True
@@ -407,6 +412,7 @@ class LineDiscipline:
         self.olock = threading.RLock()
         self.encoding = None
         self.errors = None
+        self.seq = 0
 
     def read(self, amount=-1):
         with self.ilock:
@@ -439,6 +445,11 @@ class LineDiscipline:
         else:
             d = kwds.get('sep', b' ').join(args) + kwds.get('end', b'\n')
         self.write(d)
+
+    def _submit(_self, _type, **_content):
+        _self.seq -= 1
+        return _self.submit({'type': _type, 'seq': _self.seq,
+                             'content': _content})
 
     def init(self, first):
         pass
@@ -473,7 +484,6 @@ class DoorstepLineDiscipline(LineDiscipline):
         LineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
         self.errors = 'replace'
-        self.seq = 0
 
     def init(self, first):
         if first: self.println(APPNAME, 'v' + VERSION)
@@ -508,11 +518,6 @@ class DoorstepLineDiscipline(LineDiscipline):
         else:
             a, o, d = self.HELPDICT[cmd]
             return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
-
-    def _submit(_self, _type, **_content):
-        _self.seq -= 1
-        return _self.submit({'type': _type, 'seq': _self.seq,
-                             'content': _content})
 
     def __call__(self):
         def usage():
@@ -582,6 +587,38 @@ class DoorstepLineDiscipline(LineDiscipline):
                 self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
                 self.println('FAIL', '#', 'Join room to start chatting.')
+
+# Dumb mode.
+# For the poor people who are left without anything.
+class DumbLineDiscipline(LineDiscipline):
+
+    def __init__(self, endpoint):
+        LineDiscipline.__init__(self, endpoint)
+        self.encoding = 'ascii'
+        self.errors = 'replace'
+        self.pending = queue.Queue()
+        self.busy = False
+        self.lock = threading.RLock()
+
+    def init(self, first):
+        self.println('# Press Return to write a message.')
+        self._submit('join')
+
+    def deliver(self, message):
+        with self.lock:
+            if self.busy:
+                self.pending.append(message)
+            else:
+                pass # NYI
+
+    def quit(self, last):
+        self.println('# Bye!')
+
+    def __call__(self):
+        while 1:
+            line = self.readline()
+            if not line: return None
+            # NYI
 
 def main():
     # Interrupt execution
