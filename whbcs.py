@@ -93,6 +93,11 @@ def make_error(code, wrap=False):
 # Text member generation.
 def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
 _star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
+def _format_ok(obj):
+    if obj['content']:
+        return {'prefix': (_mkhl('reply', 'OK'), ' ')}
+    else:
+        return {'text': _mkhl('reply', 'OK')}
 def _format_updated(obj):
     if obj['content']['variant'] == 'nick' and 'content' in obj['from']:
         format_text(obj['from'])
@@ -109,8 +114,9 @@ def _format_post(obj):
                            _mkhl('chatpad', '>'), ' ')}
 OBJECT_TEXTS = {
     'pong': {'prefix': _mkhl('reply', 'PONG')},
-    'success': {'prefix': _mkhl('reply', 'OK')},
-    'failure': {'prefix': _mkhl('reply', 'FAIL')},
+    'success': {'func': _format_ok},
+    'failure': {'prefix': (_mkhl('reply', 'FAIL'), ' ',
+                           _mkhl('replypad', '#'), ' ')},
     'updated': {'func': _format_updated},
     'joined': {
         'prefix': (_star, ' '),
@@ -220,6 +226,14 @@ def render_text(obj, term=None):
             if not item: item = styles[None]
             ret.append(item)
     return ''.join(ret)
+
+# Terminal type registry
+TERMTYPES = {}
+def termtype(name):
+    def callback(cls):
+        TERMTYPES[name] = cls
+        return cls
+    return callback
 
 # Server socket processing.
 # Responsible for accepting connections, logging those, spawning Endpoint-s
@@ -339,10 +353,9 @@ class ChatDistributor:
                 else:
                     reply(res)
             elif message['type'] == 'join':
-                if self.vars['joined']:
-                    reply(make_error('AJOINED', True))
-                elif any(k for k in self.VARS if k not in self.vars):
-                    reply(make_error('NORDY', True))
+                res = self.can_join()
+                if res:
+                    reply(res)
                 else:
                     self.vars['joined'] = True
                     broadcast({'type': 'joined',
@@ -351,8 +364,9 @@ class ChatDistributor:
                 broadcast({'type': 'chat',
                            'content': self._process_post(message)})
             elif message['type'] == 'leave':
-                if not self.vars['joined']:
-                    reply(make_error('ALEFT', True))
+                res = self.can_leave()
+                if res:
+                    reply(res)
                 else:
                     self.vars['joined'] = False
                     broadcast({'type': 'left', 'variant': 'normal',
@@ -431,6 +445,20 @@ class ChatDistributor:
             return {'type': 'updated', 'from': oldvar,
                 'content': dict(oldvar, content=value)}
 
+        def can_join(self):
+            if self.vars['joined']:
+                return make_error('AJOINED', True)
+            elif any(k for k in self.VARS if k not in self.vars):
+                return make_error('NORDY', True)
+            else:
+                return None
+
+        def can_leave(self):
+            if not self.vars['joined']:
+                return make_error('ALEFT', True)
+            else:
+                return None
+
     def __init__(self, server):
         self.server = server
         self.handlers = {}
@@ -485,7 +513,6 @@ class LineDiscipline:
         self.olock = threading.RLock()
         self.encoding = None
         self.errors = None
-        self.seq = 0
 
     def read(self, amount=-1):
         with self.ilock:
@@ -523,11 +550,6 @@ class LineDiscipline:
             d = kwds.get('sep', b' ').join(args) + kwds.get('end', b'\n')
         self.write(d)
 
-    def _submit(_self, _type, **_content):
-        _self.seq -= 1
-        return _self.submit({'type': _type, 'seq': _self.seq,
-                             'content': _content})
-
     def init(self, first):
         pass
 
@@ -543,40 +565,137 @@ class LineDiscipline:
     def __call__(self):
         raise NotImplementedError
 
-# Doorstep mode.
-# The initial mode a connection is in; a lowest-denominator compromise
-# between all clients.
-class DoorstepLineDiscipline(LineDiscipline):
-    HELP = (('help', '[command]', 'Display help.', ''),
-            ('quit', '', 'Terminate connection.', ''),
-            ('ping', '', 'Check connectivity.', ''),
+# Intermediate class implementing in-chat commands.
+class CommandLineDiscipline(LineDiscipline):
+    HELP = (('help', '[command]', 'Display help.', '', 'DJ'),
+            ('ping', '', 'Check connectivity.', '', 'DJ'),
             ('term', '[dumb|ansi]', 'Query/Set terminal type.',
                  'dumb -- Minimalistic mode.\n'
-                 'ansi -- Advanced escape sequences.'),
-            ('nick', '[name]', 'Query/Set nickname.', ''),
-            ('join', '', 'Join chat', ''))
-    HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
+                 'ansi -- Advanced escape sequences.', 'D'),
+            ('nick', '[name]', 'Query/Set nickname.', '', 'DJ'),
+            ('join', '', 'Join chat', '', 'DJ'),
+            ('say', '<message>', 'Post a message.',
+                 '...If the message starts with a slash.', 'J'),
+            ('me', '<message>', 'Post an emote message.', '', 'J'),
+            ('leave', '', 'Leave chat', '', 'J'),
+            ('quit', '', 'Terminate connection.', '', 'DJ'))
 
-    @staticmethod
-    def format_help(cls, cmd=None, long=False):
-        sp = lambda x, s=' ': s if x else ''
-        rf = lambda x: '# ' + x.replace('\n', '\n# ') + '\n' if x else '\n'
-        if cmd is None:
+    @classmethod
+    def format_help(cls, cmd=None, cmdcls=None, long=False):
+        sp = lambda s, x: s + x if x else ''
+        rf = lambda x: '# ' + x.replace('\n', '\n# ')
+        # Filter commands.
+        cmds = cls.HELP
+        if cmd is not None:
+            cmds = [i for i in cmds if i[0] == cmd]
+        if cmdcls:
+            cmds = [i for i in cmds if cmdcls in i[4]]
+        # Format output.
+        if len(cmds) == 0:
+            return ''
+        elif len(cmds) == 1:
+            n, a, o, d, c = cmds[0]
+            suff = sp(' -- ', o) + sp('\n', d) if long else ''
+            return '# USAGE: /%s%s%s' % (n, sp(' ', a), suff)
+        else:
             ret = ['# HELP\n']
-            for c, a, o, d in cls.HELP:
-                ret.extend(('# /', c, sp(a), a, sp(o, ' -- '), o, '\n'))
+            for n, a, o, d, c in cmds:
+                ret.extend(('# /', n, sp(' ', a), sp(' -- ', o), '\n'))
                 if long and d: ret.append(rf(d))
             return ''.join(ret).rstrip('\n')
-        elif long:
-            a, o, d = cls.HELPDICT[cmd]
-            return ('# USAGE: /%s%s%s%s%s%s%s' % (cmd, sp(a), a,
-                sp(o, ' -- '), o, sp(d, '\n'), rf(d))).rstrip('\n')
-        else:
-            a, o, d = cls.HELPDICT[cmd]
-            return '# USAGE: /%s%s%s' % (cmd, sp(a), a)
 
     def __init__(self, handler):
         LineDiscipline.__init__(self, handler)
+        self.helpclass = None
+        self.seq = 0
+        self.lock = threading.RLock()
+
+    def _submit(self, packet):
+        with self.lock:
+            self.seq -= 1
+            packet['seq'] = self.seq
+            self.submit(packet)
+            return self.seq
+
+    def handle_cmdline(self, line):
+        def usage():
+            return 'FAIL ' + self.format_help(tokens[0][1:], self.helpclass)
+        def packet(_type, **content):
+            return {'type': _type, 'content': content}
+        tokens = Token.extract(line)
+        if not tokens:
+            return None
+        elif tokens[0] == '/help':
+            if len(tokens) == 1:
+                return 'OK ' + self.format_help(None, self.helpclass)
+            elif len(tokens) == 2:
+                cmd = tokens[1]
+                if cmd.startswith('/'): cmd = cmd[1:]
+                desc = self.format_help(cmd, self.helpclass, True)
+                if not desc: return 'FAIL # Unknown command /%s.' % cmd
+                return 'OK ' + desc
+            else:
+                return usage()
+        elif tokens[0] == '/ping':
+            if len(tokens) != 1: return usage()
+            return packet('ping')
+        elif tokens[0] == '/term':
+            if len(tokens) == 1:
+                return packet('query', type='variable', variant='term')
+            elif len(tokens) == 2:
+                if tokens[1] in TERMTYPES:
+                    return packet('update', type='variable', variant='term',
+                                  content=tokens[1])
+                else:
+                    return 'FAIL # Unknown terminal type: %s.' % tokens[1]
+            else:
+                return usage()
+        elif tokens[0] == '/nick':
+            if len(tokens) == 1:
+                return packet('query', type='variable', variant='nick')
+            elif len(tokens) == 2:
+                return packet('update', type='variable', variant='nick',
+                              content=tokens[1])
+            else:
+                return usage()
+        elif tokens[0] == '/join':
+            if len(tokens) != 1: return usage()
+            res = self.handler.can_join()
+            if res: return render_text(res)
+            return packet('join')
+        elif tokens[0] == '/say':
+            if len(tokens) == 1:
+                rest = ''
+            else:
+                rest = line[tokens[1].offset:].strip()
+            return {'type': 'send', 'variant': 'normal', 'content': rest}
+        elif tokens[0] == '/me':
+            if len(tokens) == 1:
+                rest = ''
+            else:
+                rest = line[tokens[1].offset:].strip()
+            return {'type': 'send', 'variant': 'emote', 'content': rest}
+        elif tokens[0] == '/leave':
+            if len(tokens) != 1: return usage()
+            res = self.handler.can_leave()
+            if res: return render_text(res)
+            return packet('leave')
+        elif tokens[0] == '/quit':
+            if len(tokens) != 1: return usage()
+            return packet('quit')
+        elif tokens[0].startswith('/'):
+            return 'FAIL # Unknown command: %s.' % tokens[0]
+        else:
+            rest = line.strip()
+            return {'type': 'send', 'variant': 'normal', 'content': rest}
+
+# Doorstep mode.
+# The initial mode a connection is in; a lowest-denominator compromise
+# between all clients.
+class DoorstepLineDiscipline(CommandLineDiscipline):
+    def __init__(self, handler):
+        CommandLineDiscipline.__init__(self, handler)
+        self.helpclass = 'D'
         self.encoding = 'ascii'
         self.errors = 'replace'
 
@@ -586,125 +705,66 @@ class DoorstepLineDiscipline(LineDiscipline):
 
     def deliver(self, message):
         if message['type'] == 'sysmsg':
-            self.println('#', '!!!', message['text'], '!!!')
+            self.println('#', '!!!', message['text'])
         elif message.get('seq') is None:
             return # Explicitly silenced.
         elif message['type'] == 'updated':
             self.println('OK')
         elif (message['type'] == 'success' and
                 message['content']['type'] == 'variable'):
-            self.println('OK', '#', message['content']['content'])
+            self.println('OK', '#', render_text(message['content']))
         elif message['type'] == 'failure':
-            self.println('FAIL', '#', message['content']['content'])
+            self.println('FAIL', '#', render_text(message['content']))
 
     def __call__(self):
-        def usage():
-            self.println('FAIL', self.format_help(self,
-                                                  tokens[0].lstrip('/')))
         while 1:
-            tokens = self.readline_words()
-            if tokens is None:
-                return None
-            elif not tokens:
-                pass
-            elif tokens[0] == '/help':
-                if len(tokens) == 1:
-                    self.println('OK', self.format_help(self, None, False))
-                elif len(tokens) == 2:
-                    cmd = tokens[1]
-                    if cmd.startswith('/'):
-                        cmd = cmd[1:]
-                    if cmd in self.HELPDICT:
-                        self.println('OK', self.format_help(self, cmd, True))
-                    else:
-                        self.println('FAIL', '#', 'Unknown command /%s.' %
-                                     cmd)
-                else:
-                    usage()
-            elif tokens[0] == '/quit':
-                if len(tokens) != 1:
-                    usage()
-                    continue
-                self._submit('quit')
-            elif tokens[0] == '/ping':
-                if len(tokens) != 1:
-                    usage()
-                    continue
-                self.println('PONG')
-            elif tokens[0] == '/term':
-                if len(tokens) == 1:
-                    self._submit('query', type='variable', variant='term')
-                elif len(tokens) == 2 and tokens[1] in ('dumb', 'ansi'):
-                    self._submit('update', type='variable', variant='term',
-                                 content=tokens[1])
-                else:
-                    usage()
-            elif tokens[0] == '/nick':
-                if len(tokens) == 1:
-                    self._submit('query', type='variable', variant='nick')
-                elif len(tokens) == 2:
-                    self._submit('update', type='variable', variant='nick',
-                                 content=tokens[1])
-                else:
-                    usage()
-            elif tokens[0] == '/join':
-                if len(tokens) != 1:
-                    usage()
-                    continue
-                elif 'term' not in self.handler.vars:
-                    self.println('FAIL', '#', 'You have not set a terminal.')
-                elif 'nick' not in self.handler.vars:
-                    self.println('FAIL', '#', 'You have not set a nickname.')
-                elif self.handler.vars['term'] == 'dumb':
-                    return DumbLineDiscipline(self.handler)
-                elif self.handler.vars['term'] == 'ansi':
-                    self.println('FAIL', '#', 'NYI')
-                else:
+            line = self.readline()
+            if not line: return None
+            res = self.handle_cmdline(line)
+            if res is None:
+                continue
+            elif isinstance(res, str):
+                self.println(res)
+            elif res['type'] == 'join':
+                try:
+                    term = self.handler.vars['term']
+                    return TERMTYPES[term](self.handler)
+                except KeyError:
                     self.println('FAIL', '#', 'Internal error?!')
-            elif tokens[0] == '/leave':
-                if len(tokens) != 1:
-                    usage()
-                    continue
-                self.println('FAIL', '#', 'You have not joined.')
-            elif tokens[0].startswith('/'):
-                self.println('FAIL', '#', 'Unknown command %s.' % tokens[0])
             else:
-                self.println('FAIL', '#', 'Join room to start chatting.')
+                self._submit(res)
 
 # Dumb mode.
 # For the poor people who are left without anything.
-class DumbLineDiscipline(LineDiscipline):
-    HELP = (('help', '[command]', 'Display help.', ''),
-            ('ping', '', 'Check connectivity.', ''),
-            ('nick', '[name]', 'Query/Set nickname.', ''),
-            ('join', '', 'Join chat', ''),
-            ('say', '<messgae>', 'Post a message.',
-                 '...If the message starts with a slash.'),
-            ('me', '<message>', 'Post an emote message.', ''),
-            ('leave', '', 'Leave chat', ''),
-            ('quit', '', 'Terminate connection.', ''))
-    HELPDICT = {c: (a, o, d) for c, a, o, d in HELP}
-
+@termtype('dumb')
+class DumbLineDiscipline(CommandLineDiscipline):
     def __init__(self, endpoint):
-        LineDiscipline.__init__(self, endpoint)
+        CommandLineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
         self.errors = 'replace'
         self.pending = queue.Queue()
         self.busy = False
         self.newline = False
-        self.lock = threading.RLock()
 
     def init(self, first):
-        self.println('# Press Return to write a message.')
-        self._submit('join')
+        self._println('# Press Return to write a message.')
+        self._submit({'type': 'join'})
+
+    def _println(self, *args):
+        with self.lock:
+            nl = self.newline
+            self.newline = True
+        if not nl:
+            self.println(*args, end='')
+        elif not args:
+            self.println('\n', end='')
+        else:
+            self.println('\n' + args[0], *args[1:], end='')
 
     def _deliver(self, message):
         text = render_text(message)
         if not text: return
-        if self.newline: text = '\n' + text
-        with self.lock:
-            self.newline = True
-            self.println(text, end='')
+        self._println(text)
 
     def deliver(self, message):
         if (message['type'] == 'chat' and
@@ -718,69 +778,12 @@ class DumbLineDiscipline(LineDiscipline):
 
     def quit(self, last):
         with self.lock:
-            text = '# Bye!'
-            if self.newline: text = '\n' + text
-            self.println(text)
+            nl = self.newline
+            self.newline = False
+        text = ('\n' if nl else '') + '# Bye!'
+        self.println(text)
 
     def __call__(self):
-        format_help = DoorstepLineDiscipline.format_help
-        def println(*args):
-            line = ' '.join(args)
-            with self.lock:
-                if self.newline: line = '\n' + line
-                self.newline = True
-                self.println(line, end='')
-        def interpret(line):
-            def usage():
-                println('FAIL', format_help(self, tokens[0].lstrip('/')))
-            sline = line.strip()
-            if not sline: return
-            tokens = Token.extract(sline)
-            if tokens[0] == '/help':
-                if len(tokens) == 1:
-                    println('OK', format_help(self, None, False))
-                elif len(tokens) == 2:
-                    cmd = tokens[1]
-                    if cmd.startswith('/'):
-                        cmd = cmd[1:]
-                    if cmd in self.HELPDICT:
-                        println('OK', self.format_help(self, cmd, True))
-                    else:
-                        println('FAIL', '#', 'Unknown command /%s.' % cmd)
-                else:
-                    usage()
-            elif tokens[0] == '/ping':
-                if len(tokens) != 1: return usage()
-                println('PONG')
-            elif tokens[0] == '/nick':
-                if len(tokens) == 1:
-                    self._submit('query', type='variable', variant='nick')
-                elif len(tokens) == 2:
-                    self._submit('update', type='variable', variant='nick',
-                                 content=tokens[1])
-                else:
-                    usage()
-            elif tokens[0] == '/join':
-                println('FAIL', '#', 'Already joined.')
-            elif tokens[0] == '/say':
-                rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
-                self.submit({'type': 'send', 'variant': 'normal',
-                             'content': rest})
-            elif tokens[0] == '/me':
-                rest = line[tokens[1].offset:] if len(tokens) > 1 else ''
-                self.submit({'type': 'send', 'variant': 'emote',
-                             'content': rest})
-            elif tokens[0] == '/leave':
-                self._submit('leave')
-                return True
-            elif tokens[0] == '/quit':
-                self._submit('quit')
-                return True
-            elif tokens[0].startswith('/'):
-                println('FAIL', '#', 'Unknown command %s.' % tokens[0])
-            else:
-                self.submit({'type': 'send', 'variant': 'normal',
-                             'content': sline})
         def deliver():
             while 1:
                 try:
@@ -792,13 +795,18 @@ class DumbLineDiscipline(LineDiscipline):
             line = self.readline()
             if not line: break
             self.newline = False
-            if interpret(line): break
+            res = self.handle_cmdline(line)
+            if res is None:
+                pass
+            elif isinstance(res, str):
+                self._println(res)
+            else:
+                self._submit(res)
             deliver()
             with self.lock:
                 self.busy ^= True
                 if self.busy:
-                    self.println('<' + self.handler.vars['nick'] + '> ',
-                                 end='')
+                    self._println('<' + self.handler.vars['nick'] + '> ')
         deliver()
         return None
 
