@@ -793,7 +793,9 @@ class DumbLineDiscipline(CommandLineDiscipline):
         while 1:
             deliver()
             line = self.readline()
-            if not line: break
+            if not line:
+                deliver()
+                return None
             self.newline = False
             res = self.handle_cmdline(line)
             if res is None:
@@ -802,13 +804,14 @@ class DumbLineDiscipline(CommandLineDiscipline):
                 self._println(res)
             else:
                 self._submit(res)
+                if res['type'] == 'leave':
+                    deliver()
+                    return DoorstepLineDiscipline(self.handler)
             deliver()
             with self.lock:
                 self.busy ^= True
                 if self.busy:
                     self._println('<' + self.handler.vars['nick'] + '> ')
-        deliver()
-        return None
 
 def main():
     # Interrupt execution
