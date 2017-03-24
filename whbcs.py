@@ -376,12 +376,14 @@ class ChatDistributor:
                     self.vars['joined'] = False
                     broadcast({'type': 'left', 'variant': 'normal',
                                'content': self._user_info()})
-                self.close()
+                self.close(True)
             else:
                 self.distributor.handle(self, message)
 
-        def close(self):
+        def close(self, ok=False):
             if not self._closing:
+                if not ok:
+                    self.endpoint.server.log('ABORTED id=%r' % self.id)
                 self._closing = True
                 if self.vars['joined']:
                     self.vars['joined'] = False
