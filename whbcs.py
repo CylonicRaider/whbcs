@@ -700,8 +700,11 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
         self.errors = 'replace'
 
     def init(self, first):
-        if first: self.println(APPNAME, 'v' + VERSION)
-        self.println(GREETING % VERSION)
+        if first:
+            self.println(APPNAME, 'v' + VERSION)
+            self.println(GREETING % VERSION)
+        else:
+            self.println()
 
     def deliver(self, message):
         if message['type'] == 'sysmsg':
