@@ -770,6 +770,12 @@ class DumbLineDiscipline(CommandLineDiscipline):
         text = render_text(message)
         if not text: return
         self._println(text)
+    def _deliver_all(self):
+        while 1:
+            try:
+                self._deliver(self.pending.get(False))
+            except queue.Empty:
+                break
 
     def deliver(self, message):
         if (message['type'] == 'chat' and
@@ -782,6 +788,7 @@ class DumbLineDiscipline(CommandLineDiscipline):
                 self._deliver(message)
 
     def quit(self, last):
+        self._deliver_all()
         with self.lock:
             nl = self.newline
             self.newline = False
@@ -789,18 +796,10 @@ class DumbLineDiscipline(CommandLineDiscipline):
         self.println(text)
 
     def __call__(self):
-        def deliver():
-            while 1:
-                try:
-                    self._deliver(self.pending.get(False))
-                except queue.Empty:
-                    break
+        self._deliver_all()
         while 1:
-            deliver()
             line = self.readline()
-            if not line:
-                deliver()
-                return None
+            if not line: return None
             self.newline = False
             res = self.handle_cmdline(line)
             if res is None:
@@ -810,9 +809,9 @@ class DumbLineDiscipline(CommandLineDiscipline):
             else:
                 self._submit(res)
                 if res['type'] == 'leave':
-                    deliver()
+                    self._deliver_all()
                     return DoorstepLineDiscipline(self.handler)
-            deliver()
+            self._deliver_all()
             with self.lock:
                 self.busy ^= True
                 if self.busy:
