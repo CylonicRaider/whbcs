@@ -780,7 +780,7 @@ class DumbLineDiscipline(CommandLineDiscipline):
     def deliver(self, message):
         if (message['type'] == 'chat' and
                 message['content']['sender']['uid'] == self.handler.id):
-            return # Own chat messages already printed.
+            return # Own chat messages already typed by user.
         with self.lock:
             if self.busy:
                 self.pending.put(message)
