@@ -575,7 +575,7 @@ class CommandLineDiscipline(LineDiscipline):
                  'dumb -- Minimalistic mode.\n'
                  'ansi -- Advanced escape sequences.', 'D'),
             ('nick', '[name]', 'Query/Set nickname.', '', 'DJ'),
-            ('join', '', 'Join chat', '', 'DJ'),
+            ('join', '', 'Join chat', '', 'D'),
             ('say', '<message>', 'Post a message.',
                  '...If the message starts with a slash.', 'J'),
             ('me', '<message>', 'Post an emote message.', '', 'J'),
@@ -697,9 +697,9 @@ class CommandLineDiscipline(LineDiscipline):
 class DoorstepLineDiscipline(CommandLineDiscipline):
     def __init__(self, handler):
         CommandLineDiscipline.__init__(self, handler)
-        self.helpclass = 'D'
         self.encoding = 'ascii'
         self.errors = 'replace'
+        self.helpclass = 'D'
 
     def init(self, first):
         if first:
@@ -747,6 +747,7 @@ class DumbLineDiscipline(CommandLineDiscipline):
         CommandLineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
         self.errors = 'replace'
+        self.helpclass = 'J'
         self.pending = queue.Queue()
         self.busy = False
         self.newline = False
