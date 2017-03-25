@@ -824,7 +824,7 @@ class DumbLineDiscipline(CommandLineDiscipline):
 class ANSILineDiscipline(CommandLineDiscipline):
     @staticmethod
     def calibrate_height(write, readline):
-        write('\033[H\033[2J\033[r')
+        write('\033[r\033[H\033[2J')
         write('# Some text should appear at the bottom of the screen.\n'
               '# Press Return (repeatedly) if it does, or type "cancel"\n'
               '# (and press Return) if not.\n')
@@ -879,6 +879,7 @@ class ANSILineDiscipline(CommandLineDiscipline):
             return
         self.println('\033[2J\033[1;%sr\033[%s;1H' % (self.height - 1,
                                                       self.height))
+        self._submit({'type': 'join'})
 
     def _println(self, *args):
         self.write('\0337\033[A\n' + ' '.join(args) + '\0338')
@@ -905,6 +906,8 @@ class ANSILineDiscipline(CommandLineDiscipline):
                 self._println(res)
             else:
                 self._submit(res)
+                if res['type'] == 'leave':
+                    return DoorstepLineDiscipline(self.handler)
 
 def main():
     # Interrupt execution
