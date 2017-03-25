@@ -705,8 +705,6 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
         if first:
             self.println(APPNAME, 'v' + VERSION)
             self.println(GREETING % VERSION)
-        else:
-            self.println()
 
     def deliver(self, message):
         if message['type'] == 'sysmsg':
