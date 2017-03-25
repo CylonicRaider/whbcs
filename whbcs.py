@@ -818,6 +818,94 @@ class DumbLineDiscipline(CommandLineDiscipline):
                 if self.busy:
                     self._println('<' + self.handler.vars['nick'] + '> ')
 
+# ANSI terminal mode.
+# Well, kind of.
+@termtype('ansi')
+class ANSILineDiscipline(CommandLineDiscipline):
+    @staticmethod
+    def calibrate_height(write, readline):
+        write('\033[H\033[2J\033[r')
+        write('# Some text should appear at the bottom of the screen.\n'
+              '# Press Return (repeatedly) if it does, or type "cancel"\n'
+              '# (and press Return) if not.\n')
+        ly = None
+        while 1:
+            write('\033[100B\033[6n')
+            reply, state, nbuf = readline(), 0, ''
+            # Since any letter of "cancel" is invalid in any state, it is
+            # handled explicitly.
+            for ch in reply:
+                if state == 0:
+                    if ch != '\033': return None
+                    state = 1
+                elif state == 1:
+                    if ch != '[': return None
+                    state = 2
+                elif state == 2:
+                    if ch in '0123456789':
+                        nbuf += ch
+                    elif ch == ';':
+                        state = 3
+                    else:
+                        return None
+                elif state == 3:
+                    if ch == '\n':
+                        break
+                    elif ch.isspace():
+                        pass
+                    elif ch not in '0123456789;R':
+                        return None
+            else:
+                return None
+            if not nbuf: return None
+            y = int(nbuf, 10)
+            if y == ly:
+                return y
+            else:
+                ly = y
+
+    def __init__(self, endpoint):
+        CommandLineDiscipline.__init__(self, endpoint)
+        self.encoding = 'ascii'
+        self.errors = 'replace'
+        self.helpclass = 'J'
+        self.height = None
+
+    def init(self, first):
+        self.println('# Calibrating terminal...')
+        self.height = self.calibrate_height(self.write, self.readline)
+        if self.height is None:
+            self.println('# Calibration failed; reverting to dumb mode.')
+            return
+        self.println('\033[2J\033[1;%sr\033[%s;1H' % (self.height - 1,
+                                                      self.height))
+
+    def _println(self, *args):
+        self.write('\0337\033[A\n' + ' '.join(args) + '\0338')
+
+    def deliver(self, message):
+        text = render_text(message)
+        if not text: return
+        self._println(text)
+
+    def quit(self, last):
+        self.println('\033c# Bye!')
+
+    def __call__(self):
+        if self.height is None: return DumbLineDiscipline(self.handler)
+        while 1:
+            self.write('\033[K<' + self.handler.vars['nick'] + '> ')
+            line = self.readline()
+            if not line:
+                break
+            res = self.handle_cmdline(line)
+            if res is None:
+                pass
+            elif isinstance(res, str):
+                self._println(res)
+            else:
+                self._submit(res)
+
 def main():
     # Interrupt execution
     def die(msg, retcode=1):
