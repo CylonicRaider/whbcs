@@ -383,6 +383,9 @@ class ChatDistributor:
                     self.vars['joined'] = True
                     broadcast({'type': 'joined',
                                'content': self._user_info()})
+            elif message['type'] == 'list':
+                reply({'type': 'success', 'content': {'type': 'listing',
+                    'content': self.distributor._make_listing()}})
             elif message['type'] == 'send':
                 if self.vars['joined']:
                     broadcast({'type': 'chat',
@@ -503,6 +506,11 @@ class ChatDistributor:
     def get_handler(self, id):
         with self.lock:
             return self.handlers[id]
+
+    def _make_listing(self):
+        with self.lock:
+            handlers = list(self.handlers.values())
+        return [h._user_info() for h in handlers]
 
     def handle(self, handler, message):
         def reply(msg):
