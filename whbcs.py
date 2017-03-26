@@ -924,15 +924,20 @@ class ANSILineDiscipline(CommandLineDiscipline):
     def quit(self, last):
         self.println('\033c# Bye!')
 
+    def _write_prompt(self, echo=None):
+        prompt = '<' + self.handler.vars['nick'] + '> '
+        if echo is None:
+            self.write('\033[K' + prompt)
+        elif echo.startswith('/') and not echo.startswith('/nick'):
+            self._println(prompt + echo)
+
     def __call__(self):
         if self.height is None: return DumbLineDiscipline(self.handler)
         while 1:
-            self.write('\033[K<' + self.handler.vars['nick'] + '> ')
+            self._write_prompt()
             line = self.readline()
             if not line: break
-            sline = line.strip()
-            if sline.startswith('/') and not sline.startswith('/nick'):
-                self._println('<' + self.handler.vars['nick'] + '> ' + sline)
+            self._write_prompt(line.strip())
             res = self.handle_cmdline(line)
             if res is None:
                 pass
