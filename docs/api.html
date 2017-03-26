@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 9, as of 2017-03-22</aside>
+<aside>Revision 10, as of 2017-03-26</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -257,6 +257,11 @@ which tells what to change the variable to. The reply is a modified
 <p>Tells the server that the client wants to leave chat again. A modified
 <tt><b>left</b></tt> is sent to the client as confirmation.</p>
 
+<h4><tt>list</tt></h4>
+<p>Tells the server to enumerate all users currently present. The server
+replies with a <tt><b>success</b></tt> containing a
+<tt><b>listing</b></tt>.</p>
+
 <h4><tt>send</tt></h4>
 <p>Sends a chat message. <tt>content</tt> and <tt>variant</tt> specify what
 exactly to send; see <tt><b>post</b></tt> for explanations. <tt>content</tt>
@@ -374,6 +379,10 @@ meta-information.</li>
 Attributes</b> for explanation.</em></li>
 </ul>
 
+<h4><tt>listing</tt></h4>
+<p>A list of users in no particular order. <tt>content</tt> is an array of
+<tt><b>user</b></tt> objects.</p>
+
 <h4><tt>user</tt></h4>
 <p>An individual chat participant. <tt>uid</tt> is the identifier of the
 client (see <tt><b>variable</b></tt> for details); <tt>content</tt> is the
@@ -383,8 +392,7 @@ nickname of the user.</p>
 <p>An <tt>@</tt>-mention of a client. Similarly to <tt><b>user</b></tt>, the
 user's nickname (dissimilarly, with the preceding <tt>@</tt> sign retained)
 is stored in the <tt>content</tt> member; the <tt>uid</tt> member may be
-absent if it is not clear which user is exactly meant (<i>i.e.</i> always
-for now).</p>
+absent if it is not clear which user is exactly meant.</p>
 
 <h4><tt>hl</tt></h4>
 <p>A piece of text that does not carry particular semantical meaning, but
@@ -438,7 +446,7 @@ surrounding various parts of a chat post.
 </ul>
 
 <h4><tt>char</tt></h4>
-<p>An unrecognized character encountered in a  <tt><b>post</b></tt>. The
+<p>An unrecognized character encountered in a <tt><b>post</b></tt>. The
 <tt>content</tt> field is a single-character string containing the original
 value as the character code; the <tt>text</tt> holds a replacement character
 (<i>e.g.</i>, a <tt>?</tt>).</p>
