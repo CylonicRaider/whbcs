@@ -257,6 +257,65 @@ def render_text(obj, term=None):
             ret.append(item)
     return ''.join(ret)
 
+# Validate that a dict conforms to the given format.
+class Validator:
+    @staticmethod
+    def forPattern(tp):
+        if isinstance(tp, Validator):
+            return tp
+        elif isinstance(tp, dict):
+            return DictValidator(**tp)
+        elif isinstance(tp, type):
+            return Validator(tp)
+        else:
+            return ValueValidator(tp)
+    def __init__(self, type):
+        self.type = type
+    def check(self, obj):
+        return isinstance(obj, self.type)
+
+class ValueValidator(Validator):
+    def __init__(self, *values):
+        Validator.__init__(self, object)
+        self.values = values
+    def check(self, obj):
+        return (obj in self.values)
+
+class DictValidator(Validator):
+    def __init__(_self, _optional=(), **_kwds):
+        Validator.__init__(_self, dict)
+        _self.optional = _optional
+        _self.members = {}
+        for k, v in _kwds.items():
+            _self.members[k] = Validator.forPattern(v)
+    def check(self, obj):
+        if not isinstance(obj, dict): return False
+        for k, v in self.members:
+            if k not in obj:
+                if k in self.optional: continue
+                return False
+            if not v(obj[k]): return False
+        if set(obj.keys()).difference(self.optional): return False
+        return True
+
+_DV = DictValidator
+VALIDATORS = {
+    'ping': _DV(type='ping'),
+    'query': _DV(type='query', content=_DV(('uid',), type='variable',
+        variant=str, uid=int)),
+    'update': _DV(type='query', content=_DV(type='variable',
+        variant=str, value=object)),
+    'join': _DV(type='join'),
+    'leave': _DV(type='leave'),
+    'list': _DV(type='list'),
+    'send': _DV(type='send', variant=str, content=str),
+    'quit': _DV(type='quit')
+    }
+def validate_input(obj):
+    if not isinstance(obj, dict) or 'type' not in obj:
+        return False
+    return VALIDATORS[obj['type']].check(obj)
+
 # Terminal type registry
 TERMTYPES = {}
 def termtype(name):
