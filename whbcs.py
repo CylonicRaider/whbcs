@@ -369,7 +369,8 @@ class ChatDistributor:
             elif message['type'] == 'update':
                 res = self.update_var(message['content'])
                 desc = self.VARS[res['content']['variant']]
-                if res['type'] == 'updated' and not desc['private']:
+                if (res['type'] == 'updated' and not desc['private'] and
+                        self.vars['joined']):
                     broadcast(res)
                 else:
                     reply(res)
