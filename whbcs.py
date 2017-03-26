@@ -118,6 +118,13 @@ def _format_post(obj):
     else:
         return {'prefix': (_mkhl('chatpad', '<'), obj['sender'],
                            _mkhl('chatpad', '>'), ' ')}
+def _format_listing(obj):
+    items = []
+    for n, i in enumerate(obj['content']):
+        format_text(i)
+        if n: items.append(',')
+        items.append(dict(i, type='mention'))
+    return {'prefix': 'Users online: ', 'text': items}
 OBJECT_TEXTS = {
     'pong': {'prefix': _mkhl('reply', 'PONG')},
     'success': {'func': _format_ok},
@@ -139,7 +146,8 @@ OBJECT_TEXTS = {
         }
     },
     'sysmsg': {'prefix': (_stars, ' ')},
-    'post': {'func': _format_post}}
+    'post': {'func': _format_post},
+    'listing': {'func': _format_listing}}
 def format_text(obj, _table=None):
     try:
         info = _table[obj['type']]
@@ -610,6 +618,7 @@ class CommandLineDiscipline(LineDiscipline):
                  'ansi -- Advanced escape sequences.', 'D'),
             ('nick', '[name]', 'Query/Set nickname.', '', 'DJ'),
             ('join', '', 'Join chat', '', 'D'),
+            ('list', '', 'List currently present users.', '', 'J'),
             ('say', '<message>', 'Post a message.',
                  '...If the message starts with a slash.', 'J'),
             ('me', '<message>', 'Post an emote message.', '', 'J'),
@@ -710,6 +719,9 @@ class CommandLineDiscipline(LineDiscipline):
             res = self.handler.can_join()
             if res: return res
             return packet('join')
+        elif tokens[0] == '/list':
+            if len(tokens) != 1: return usage()
+            return packet('list')
         elif tokens[0] == '/say':
             if len(tokens) == 1:
                 rest = ''
