@@ -929,8 +929,10 @@ class ANSILineDiscipline(CommandLineDiscipline):
         while 1:
             self.write('\033[K<' + self.handler.vars['nick'] + '> ')
             line = self.readline()
-            if not line:
-                break
+            if not line: break
+            sline = line.strip()
+            if sline.startswith('/') and not sline.startswith('/nick'):
+                self._println('<' + self.handler.vars['nick'] + '> ' + sline)
             res = self.handle_cmdline(line)
             if res is None:
                 pass
