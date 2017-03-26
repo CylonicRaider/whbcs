@@ -613,9 +613,10 @@ class LineDiscipline:
 class CommandLineDiscipline(LineDiscipline):
     HELP = (('help', '[command]', 'Display help.', '', 'DJ'),
             ('ping', '', 'Check connectivity.', '', 'DJ'),
-            ('term', '[dumb|ansi]', 'Query/Set terminal type.',
+            ('term', '[dumb|ansi|vte]', 'Query/Set terminal type.',
                  'dumb -- Minimalistic mode.\n'
-                 'ansi -- Advanced escape sequences.', 'D'),
+                 'ansi -- Advanced escape sequences.\n'
+                 'vte -- Workarounds for some buggy terminals.', 'D'),
             ('nick', '[name]', 'Query/Set nickname.', '', 'DJ'),
             ('join', '', 'Join chat', '', 'D'),
             ('list', '', 'List currently present users.', '', 'J'),
@@ -978,6 +979,29 @@ class ANSILineDiscipline(CommandLineDiscipline):
                 self._submit(res)
                 if res['type'] == 'leave':
                     return DoorstepLineDiscipline(self.handler)
+
+# libvte line discipline.
+# Includes workarounds for some of its bugs.
+@termtype('vte')
+class VTELineDiscipline(ANSILineDiscipline):
+    def _println(self, *args):
+        # Cursor placement works differently; positioning explicitly.
+        self.write('\0337\033[%s;1H\n%s\0338' % (self.height - 1,
+                                                 ' '.join(args)))
+
+    def deliver(self, message):
+        # Own messages already pushed up by bugs.
+        if (message['type'] == 'chat' and
+                message['content']['sender']['uid'] == self.handler.id):
+            return
+        ANSILineDiscipline.deliver(self, message)
+
+    def _write_prompt(self, echo=None):
+        prompt = '<' + self.handler.vars['nick'] + '> '
+        if echo is None:
+            self.write('\033[K' + prompt)
+            return
+        # Commands already pushed up by bugs.
 
 def main():
     # Interrupt execution
