@@ -79,6 +79,7 @@ ERRORS = {
     'BADVAL': 'Bad value.',
     'INTER': 'Internal error?!',
     'NOCLNT': 'No such client.',
+    'NOJOIN': 'Not joined.',
     'NORDY': 'Not ready.',
     'NOTYPE': 'No such message type.',
     'NOVAL': 'Variable has no value.',
@@ -383,8 +384,11 @@ class ChatDistributor:
                     broadcast({'type': 'joined',
                                'content': self._user_info()})
             elif message['type'] == 'send':
-                broadcast({'type': 'chat',
-                           'content': self._process_post(message)})
+                if self.vars['joined']:
+                    broadcast({'type': 'chat',
+                               'content': self._process_post(message)})
+                else:
+                    reply(make_error('NOJOIN', True))
             elif message['type'] == 'leave':
                 res = self.can_leave()
                 if res:
