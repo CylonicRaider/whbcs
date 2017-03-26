@@ -201,12 +201,17 @@ def flatten_text(obj):
             ret.append(i)
         elif i:
             stack.append(i)
+            if ret and isinstance(ret[-1], dict): ret.pop()
             ret.append(i)
-        elif len(stack) > 1:
+        elif ret[-1] is stack[-1]:
             stack.pop()
-            ret.append(stack[-1])
+            ret.pop()
         else:
-            ret.append(i)
+            stack.pop()
+            if isinstance(ret[-1], dict): ret.pop()
+            # Copy to prevent triggering the empty group collapsing code.
+            ret.append(dict(stack[-1]) if stack else i)
+    if stack: ret.append({})
     return ret
 
 # Render the textual representation of obj into a single string with embedded
