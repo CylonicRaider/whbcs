@@ -596,6 +596,7 @@ class CommandLineDiscipline(LineDiscipline):
             ('me', '<message>', 'Post an emote message.', '', 'J'),
             ('leave', '', 'Leave chat', '', 'J'),
             ('quit', '', 'Terminate connection.', '', 'DJ'))
+    REPLIES = ('pong', 'success', 'failure')
 
     @classmethod
     def format_help(cls, cmd=None, cmdcls=None, long=False):
@@ -635,8 +636,16 @@ class CommandLineDiscipline(LineDiscipline):
             return self.seq
 
     def handle_cmdline(self, line):
+        def ok(message):
+            return {'type': 'success', 'content': message}
+        def fail(message):
+            return {'type': 'failure', 'content': {'type': 'error',
+                                                   'content': message}}
+        def unhash(s):
+            return s[2:] if s.startswith('# ') else s
         def usage():
-            return 'FAIL ' + self.format_help(tokens[0][1:], self.helpclass)
+            return fail(unhash(self.format_help(tokens[0][1:],
+                                                self.helpclass)))
         def packet(_type, **content):
             return {'type': _type, 'content': content}
         tokens = Token.extract(line)
@@ -644,18 +653,20 @@ class CommandLineDiscipline(LineDiscipline):
             return None
         elif tokens[0] == '/help':
             if len(tokens) == 1:
-                return 'OK ' + self.format_help(None, self.helpclass)
+                return ok(unhash(self.format_help(None, self.helpclass)))
             elif len(tokens) == 2:
                 cmd = tokens[1]
                 if cmd.startswith('/'): cmd = cmd[1:]
                 desc = self.format_help(cmd, self.helpclass, True)
-                if not desc: return 'FAIL # Unknown command /%s.' % cmd
-                return 'OK ' + desc
+                if not desc: return fail('Unknown command /%s.' % cmd)
+                return ok(unhash(desc))
             else:
                 return usage()
         elif tokens[0] == '/ping':
-            if len(tokens) != 1: return usage()
-            return packet('ping')
+            if len(tokens) == 1:
+                return {'type': 'pong'}
+            else:
+                return usage()
         elif tokens[0] == '/term':
             if len(tokens) == 1:
                 return packet('query', type='variable', variant='term')
@@ -664,7 +675,7 @@ class CommandLineDiscipline(LineDiscipline):
                     return packet('update', type='variable', variant='term',
                                   content=tokens[1])
                 else:
-                    return 'FAIL # Unknown terminal type: %s.' % tokens[1]
+                    return fail('Unknown terminal type: %s.' % tokens[1])
             else:
                 return usage()
         elif tokens[0] == '/nick':
@@ -678,7 +689,7 @@ class CommandLineDiscipline(LineDiscipline):
         elif tokens[0] == '/join':
             if len(tokens) != 1: return usage()
             res = self.handler.can_join()
-            if res: return render_text(res)
+            if res: return res
             return packet('join')
         elif tokens[0] == '/say':
             if len(tokens) == 1:
@@ -695,13 +706,13 @@ class CommandLineDiscipline(LineDiscipline):
         elif tokens[0] == '/leave':
             if len(tokens) != 1: return usage()
             res = self.handler.can_leave()
-            if res: return render_text(res)
+            if res: return res
             return packet('leave')
         elif tokens[0] == '/quit':
             if len(tokens) != 1: return usage()
             return packet('quit')
         elif tokens[0].startswith('/'):
-            return 'FAIL # Unknown command: %s.' % tokens[0]
+            return fail('Unknown command: %s.' % tokens[0])
         else:
             rest = line.strip()
             return {'type': 'send', 'variant': 'normal', 'content': rest}
@@ -724,13 +735,17 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
     def deliver(self, message):
         if message['type'] == 'sysmsg':
             self.println('#', '!!!', message['text'])
-        elif message.get('seq') is None:
+        elif 'seq' not in message:
             return # Explicitly silenced.
         elif message['type'] == 'updated':
             self.println('OK')
-        elif (message['type'] == 'success' and
-                message['content']['type'] == 'variable'):
-            self.println('OK', '#', render_text(message['content']))
+        elif message['type'] == 'pong':
+            self.println('PONG')
+        elif message['type'] == 'success':
+            if isinstance(message['content'], str):
+                self.println('OK', '#', message['content'])
+            elif message['content']['type'] == 'variable':
+                self.println('OK', '#', render_text(message['content']))
         elif message['type'] == 'failure':
             self.println('FAIL', '#', render_text(message['content']))
 
@@ -741,8 +756,9 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
             res = self.handle_cmdline(line)
             if res is None:
                 continue
-            elif isinstance(res, str):
-                self.println(res)
+            elif res['type'] in self.REPLIES:
+                res['seq'] = None
+                self.deliver(res)
             elif res['type'] == 'join':
                 try:
                     term = self.handler.vars['term']
@@ -818,8 +834,8 @@ class DumbLineDiscipline(CommandLineDiscipline):
             res = self.handle_cmdline(line)
             if res is None:
                 pass
-            elif isinstance(res, str):
-                self._println(res)
+            elif res['type'] in self.REPLIES:
+                self.deliver(res)
             else:
                 self._submit(res)
                 if res['type'] == 'leave':
@@ -915,8 +931,8 @@ class ANSILineDiscipline(CommandLineDiscipline):
             res = self.handle_cmdline(line)
             if res is None:
                 pass
-            elif isinstance(res, str):
-                self._println(res)
+            elif res['type'] in self.REPLIES:
+                self.deliver(res)
             else:
                 self._submit(res)
                 if res['type'] == 'leave':
