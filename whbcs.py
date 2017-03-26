@@ -100,9 +100,13 @@ def _format_ok(obj):
         return {'text': _mkhl('reply', 'OK')}
 def _format_updated(obj):
     if obj['content']['variant'] == 'nick' and 'content' in obj['from']:
-        format_text(obj['from'])
+        fromment = {'type': 'mention', 'content': obj['from']['content']}
+        tousr = {'type': 'user', 'content': obj['content']['content'],
+                 'uid': obj['content']['uid']}
+        format_text(fromment)
+        format_text(tousr)
         return {'prefix': (_star, ' '), 'text': _mkhl('msgtext',
-              (obj['from'], ' is now ', obj['content']))}
+              (fromment, ' is now ', tousr))}
     else:
         return {'text': None}
 def _format_post(obj):
@@ -206,23 +210,34 @@ def flatten_text(obj):
 
 # Render the textual representation of obj into a single string with embedded
 # formatting instructions for term (or none if that is None).
-STYLES = {}
+_aclr = lambda *c: '\033[' + ';'.join(map(str, c)) + 'm'
+STYLES = {'ansi': {
+        None: _aclr(0),
+        'error': _aclr(22, 31),
+        'user': _aclr(22, 35),
+        'mention': _aclr(22, 33),
+        'hl': {
+            None: _aclr(0),
+            'reply': _aclr(39, 1),
+            'replypad': _aclr(0),
+            'syspad': _aclr(39, 1),
+            'sysmsg': _aclr(0),
+            'msgpad': _aclr(22, 36),
+            'msgtext': _aclr(22, 32),
+            'msgerr': _aclr(22, 31),
+            'chatpad': _aclr(22, 36)
+        }
+    }}
 def render_text(obj, term=None):
-    if term is not None:
-        styles = STYLES[term]
-    else:
-        styles = None
+    styles = None if term is None else STYLES[term]
     ret = []
     for i in flatten_text(obj):
         if isinstance(i, str):
             ret.append(i)
-        elif term is None:
-            pass
-        else:
+        elif styles:
             item = styles.get(i.get('type'))
             if isinstance(item, dict):
-                newitem = item.get(i.get('variant'))
-                if newitem: item = newitem
+                item = item.get(i.get('variant'))
             if not item: item = styles[None]
             ret.append(item)
     return ''.join(ret)
@@ -883,7 +898,7 @@ class ANSILineDiscipline(CommandLineDiscipline):
         self.write('\0337\033[A\n' + ' '.join(args) + '\0338')
 
     def deliver(self, message):
-        text = render_text(message)
+        text = render_text(message, 'ansi')
         if not text: return
         self._println(text)
 
