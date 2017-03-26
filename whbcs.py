@@ -95,7 +95,8 @@ def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
 _star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
 def _format_ok(obj):
     if obj['content']:
-        return {'prefix': (_mkhl('reply', 'OK'), ' ')}
+        return {'prefix': (_mkhl('reply', 'OK'), ' ', _mkhl('replypad', '#'),
+                           ' ')}
     else:
         return {'text': _mkhl('reply', 'OK')}
 def _format_updated(obj):
@@ -758,6 +759,7 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
                 continue
             elif res['type'] in self.REPLIES:
                 res['seq'] = None
+                format_text(res)
                 self.deliver(res)
             elif res['type'] == 'join':
                 try:
@@ -835,6 +837,7 @@ class DumbLineDiscipline(CommandLineDiscipline):
             if res is None:
                 pass
             elif res['type'] in self.REPLIES:
+                format_text(res)
                 self.deliver(res)
             else:
                 self._submit(res)
@@ -932,6 +935,7 @@ class ANSILineDiscipline(CommandLineDiscipline):
             if res is None:
                 pass
             elif res['type'] in self.REPLIES:
+                format_text(res)
                 self.deliver(res)
             else:
                 self._submit(res)
