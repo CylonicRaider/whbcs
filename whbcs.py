@@ -416,7 +416,8 @@ class ChatDistributor:
     # Responsible for the management of client state independently from the
     # mode of connection.
     class ClientHandler:
-        VARS = {'nick': {'type': str, 'private': False, 'rw': True},
+        VARS = {'nick': {'type': str, 'private': False, 'rw': True,
+                         'check': re.compile(r'\S+$').match},
                 'term': {'type': str, 'private': True, 'rw': True},
                 'send-text': {'type': bool, 'private': True, 'rw': True,
                               'default': True},
@@ -568,6 +569,8 @@ class ChatDistributor:
                 return make_error('VARRO', True)
             try:
                 value = desc['type'](variable['content'])
+                if 'check' in desc and not desc['check'](value):
+                    raise ValueError('Variable does not pass validation.')
             except ValueError:
                 return make_error('BADVAL', True)
             oldvar = {'type': 'variable', 'variant': variable['variant'],
