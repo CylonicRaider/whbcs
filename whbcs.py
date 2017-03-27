@@ -97,7 +97,8 @@ def make_error(code, wrap=False):
 
 # Text member generation.
 def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
-_star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
+_star = _mkhl('msgpad', '*')
+_sstar, _stars = _mkhl('syspad', '*'), _mkhl('syspad', '***')
 def _format_ok(obj):
     if obj.get('content'):
         return {'prefix': (_mkhl('reply', 'OK'), ' ', _mkhl('replypad', '#'),
@@ -112,7 +113,7 @@ def _format_updated(obj):
                  'uid': obj['content']['uid']}
         format_text(fromment)
         format_text(tousr)
-        return {'prefix': (_star, ' '), 'text': _mkhl('msgtext',
+        return {'prefix': (_sstar, ' '), 'text': _mkhl('msgtext',
               (fromment, ' is now ', tousr))}
     else:
         return {'text': None}
@@ -138,15 +139,15 @@ OBJECT_TEXTS = {
                            _mkhl('replypad', '#'), ' ')},
     'updated': {'func': _format_updated},
     'joined': {
-        'prefix': (_star, ' '),
+        'prefix': (_sstar, ' '),
         'suffix': (' ', _mkhl('msgtext', 'has joined'))
     },
     'left': {
-        'prefix': (_star, ' '),
+        'prefix': (_sstar, ' '),
         'suffix': (' ', _mkhl('msgtext', 'has left')),
         'variant': {
             'abrupt': {
-                'prefix': (_star, ' '),
+                'prefix': (_sstar, ' '),
                 'suffix': (' ', _mkhl('msgerr', 'has left unexpectedly'))
             }
         }
