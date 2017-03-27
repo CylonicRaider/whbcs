@@ -960,6 +960,7 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
                     self.println('FAIL', '#', '/api takes no arguments')
                     continue
                 self.println('OK')
+                self.handler.vars['term'] = 'api'
                 return APILineDiscipline(self.handler)
             res = self.handle_cmdline(line)
             if res is None:
