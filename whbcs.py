@@ -105,7 +105,8 @@ def _format_ok(obj):
         return {'text': _mkhl('reply', 'OK')}
 def _format_updated(obj):
     if obj['content']['variant'] == 'nick' and 'content' in obj['from']:
-        fromment = {'type': 'mention', 'content': obj['from']['content']}
+        fromment = {'type': 'mention', 'content': obj['from']['content'],
+                    'uid': obj['from']['uid']}
         tousr = {'type': 'user', 'content': obj['content']['content'],
                  'uid': obj['content']['uid']}
         format_text(fromment)
