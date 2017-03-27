@@ -691,7 +691,9 @@ class APILineDiscipline(LineDiscipline):
             line = self.readline()
             if not line: return None
             line = line.strip()
-            if not line.startswith('{'):
+            if not line:
+                continue
+            elif not line.startswith('{'):
                 self._deliver(make_error('BADLINE', True))
                 continue
             try:
