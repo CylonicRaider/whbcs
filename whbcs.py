@@ -98,7 +98,7 @@ def make_error(code, wrap=False):
 def _mkhl(v, t): return {'type': 'hl', 'variant': v, 'text': t}
 _star, _stars = _mkhl('msgpad', '*'), _mkhl('syspad', '***')
 def _format_ok(obj):
-    if obj['content']:
+    if obj.get('content'):
         return {'prefix': (_mkhl('reply', 'OK'), ' ', _mkhl('replypad', '#'),
                            ' ')}
     else:
@@ -736,6 +736,12 @@ class CommandLineDiscipline(LineDiscipline):
             ('say', '<message>', 'Post a message.',
                  '...If the message starts with a slash.', 'J'),
             ('me', '<message>', 'Post an emote message.', '', 'J'),
+            ('alert', '[no|ping|once|yes]', 'Query/Set alert mode.',
+                 'no -- No alerts at all.\n'
+                 'ping -- When @-mentioned.\n'
+                 'once -- At the next message, then not.\n'
+                 'yes -- At any message\n'
+                 'NOTE: Is reset when joining/leaving.', 'J'),
             ('leave', '', 'Leave chat', '', 'J'),
             ('quit', '', 'Terminate connection.', '', 'DJ'))
     REPLIES = ('pong', 'success', 'failure')
@@ -769,6 +775,7 @@ class CommandLineDiscipline(LineDiscipline):
         self.helpclass = None
         self.seq = 0
         self.lock = threading.RLock()
+        self.alerts = 'no'
 
     def _submit(self, packet):
         with self.lock:
@@ -777,8 +784,28 @@ class CommandLineDiscipline(LineDiscipline):
             self.submit(packet)
             return self.seq
 
+    def check_mentions(self, post):
+        comp = self.handler.vars['nick'].lower()
+        for i in post['text']:
+            if (isinstance(i, dict) and i['type'] == 'mention' and
+                    i['content'].lower() == comp):
+                return True
+        return False
+    def check_alerts(self, post):
+        if self.alerts == 'no':
+            return False
+        elif self.alerts == 'yes':
+            return True
+        elif self.alerts == 'once':
+            self.alerts = 'no'
+            return True
+        else:
+            res = self.check_mentions(post)
+            return res
+
     def handle_cmdline(self, line):
-        def ok(message):
+        def ok(message=None):
+            if message is None: return {'type': 'success'}
             return {'type': 'success', 'content': message}
         def fail(message):
             return {'type': 'failure', 'content': {'type': 'error',
@@ -848,6 +875,17 @@ class CommandLineDiscipline(LineDiscipline):
             else:
                 rest = line[tokens[1].offset:].strip()
             return {'type': 'send', 'variant': 'emote', 'content': rest}
+        elif tokens[0] == '/alert':
+            if len(tokens) == 1:
+                return ok(self.alerts)
+            elif len(tokens) == 2:
+                if tokens[1] in ('no', 'ping', 'once', 'yes'):
+                    self.alerts = str(tokens[1])
+                    return ok()
+                else:
+                    return fail('Unknown alert mode: %s.' % tokens[1])
+            else:
+                return usage()
         elif tokens[0] == '/leave':
             if len(tokens) != 1: return usage()
             res = self.handler.can_leave()
@@ -887,7 +925,9 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
         elif message['type'] == 'pong':
             self.println('PONG')
         elif message['type'] == 'success':
-            if isinstance(message['content'], str):
+            if 'content' not in message:
+                self.println('OK')
+            elif isinstance(message['content'], str):
                 self.println('OK', '#', message['content'])
             elif message['content']['type'] == 'variable':
                 self.println('OK', '#', render_text(message['content']))
@@ -952,6 +992,9 @@ class DumbLineDiscipline(CommandLineDiscipline):
     def _deliver(self, message):
         text = render_text(message)
         if not text: return
+        if (message['type'] == 'chat' and
+                self.check_alerts(message['content'])):
+            text += '\a'
         self._println(text)
     def _deliver_all(self):
         while 1:
@@ -1070,6 +1113,9 @@ class ANSILineDiscipline(CommandLineDiscipline):
     def deliver(self, message):
         text = render_text(message, 'ansi')
         if not text: return
+        if (message['type'] == 'chat' and
+                self.check_alerts(message['content'])):
+            text += '\a'
         self._println(text)
 
     def quit(self, last):
