@@ -7,6 +7,7 @@ APPNAME = 'WHBCS'
 VERSION = '2.0-pre'
 
 import sys, os, re, time, socket
+import json
 import threading
 import errno, signal
 import logging
@@ -76,6 +77,8 @@ class Token(str):
 ERRORS = {
     'AJOINED': 'Already joined.',
     'ALEFT': 'Already left.',
+    'BADLINE': 'Bad line.',
+    'BADOBJ': 'Bad object.',
     'BADVAL': 'Bad value.',
     'INTER': 'Internal error?!',
     'NOCLNT': 'No such client.',
@@ -667,6 +670,39 @@ class LineDiscipline:
 
     def __call__(self):
         raise NotImplementedError
+
+# Line discipline allowing (more) direct access to the API.
+class APILineDiscipline(LineDiscipline):
+    def __init__(self, handler):
+        LineDiscipline.__init__(self, handler)
+        self.encoding = 'ascii'
+        self.errors = 'strict'
+
+    def _deliver(self, message):
+        if self.handler.vars['send-text']:
+            format_text(message)
+        self.deliver(message)
+
+    def deliver(self, message):
+        self.write(json.dumps(message, separators=(',', ':')) + '\n')
+
+    def __call__(self):
+        while 1:
+            line = self.readline()
+            if not line: return None
+            line = line.strip()
+            if not line.startswith('{'):
+                self._deliver(make_error('BADLINE', True))
+                continue
+            try:
+                data = json.loads(line)
+            except ValueError:
+                self._deliver(make_error('BADLINE', True))
+                continue
+            if not validate_input(data):
+                self._deliver(make_error('BADOBJ', True))
+                continue
+            self.submit(data)
 
 # Intermediate class implementing in-chat commands.
 class CommandLineDiscipline(LineDiscipline):
