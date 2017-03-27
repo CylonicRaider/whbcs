@@ -7,6 +7,8 @@ else
   cd "$(dirname "$0")"
 fi
 
+[ "$WHBCS_CLOSEFDS" ] && exec </dev/null >/dev/null 2>&1
+
 touch whbcs.log
 
 if [ "$1" = "-f" ]
