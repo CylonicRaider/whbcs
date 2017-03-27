@@ -1160,7 +1160,8 @@ class ANSILineDiscipline(CommandLineDiscipline):
         prompt = '<' + self.handler.vars['nick'] + '> '
         if echo is None:
             self.write('\033[K' + prompt)
-        elif echo.startswith('/') and not echo.startswith('/nick'):
+        elif echo.startswith('/') and not (echo.startswith('/nick') or
+                                           echo.startswith('/me')):
             self._println(prompt + echo)
 
     def __call__(self):
