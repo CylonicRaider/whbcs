@@ -13,7 +13,7 @@ h2, h3, h4 { margin-top: 15px; }
 h5 { font-size: 1em; }
 ul, ol, dl { padding-left: 0; }
 dt { font-weight: bold; margin-top: 5px; }
-dd { margin: 0; }
+dd { margin: 0 0 0 1em; }
 pre { padding: 3px 0; }
 article { margin: auto; max-width: 46em; }
 aside { font-style: italic; margin: 5px 1em; }
@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 11, as of 2017-03-27</aside>
+<aside>Revision 12, as of 2017-03-27</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -139,9 +139,9 @@ The syntax is again similar to <tt>OK</tt>.</li>
 (<tt>/</tt>) character. Of the commands, only <tt>/api</tt> is relevant to
 API clients; it switches the connection into API mode. The reply to the
 <tt>/api</tt> command is still sent in the mode described above (<i>i.e.</i>,
-it is an <tt>OK</tt> or <tt>FAIL</tt> line); all further messages from the
-server &mdash; including replies to "legacy" commands &mdash; are sent in the
-format elaborated below.</p>
+it is an <tt>OK</tt> or <tt>FAIL</tt> line, whereof the latter never
+happens); all further messages from the server are sent in the format
+elaborated below.</p>
 <p>Other notable commands include <tt>/ping</tt>, which results in the server
 sending a <tt>PONG</tt> reply, and <tt>/quit</tt>, which lets WHBCS terminate
 the connection (after performing some clean-up, which is not necessary in API
@@ -341,18 +341,30 @@ requests), or the client is not explicitly identified (such as inside
 <li><tt>nick</tt> &mdash; <strong>Nickname</strong>: A string the client
 chose as the nickname for themself.</li>
 <li><tt>term</tt> &mdash; <strong>Terminal type</strong> <em>(private)</em>:
-The terminal of the client. Of little use to API clients.</li>
+The terminal of the client. Of little use to API clients. Set to
+<tt>"api"</tt> by the <tt>/api</tt> command elaborated upon above, and
+read-only in API mode.</li>
 <li><tt>send-text</tt> &mdash; <strong>Send <tt>text</tt> fields</strong>
 <em>(private)</em>: Informs the server whether it should format and send
 <tt><b>text</b></tt> fields to the client, or if the latter will disregard
-them. Can be used to save bandwidth.</li>
+them. Can be used to save bandwidth. <b>Default</b>: <tt>true</tt>.</li>
+<li><tt>joined</tt> &mdash; <strong>Whether client joined</strong>
+<em>(read-only)</em>: Used by the server to track whether a client has
+actually joined or not. Cannot be modified directly, and is changed by the
+<tt><b>join</b></tt> and <tt><b>leave</b></tt> commands. <b>Default</b>:
+<tt>false</tt> (representing doorstep mode).</li>
 </ul>
 <p>...where annotations mean:</p>
 <dl>
 <dt>private</dt>
 <dd>Only the own value can be queried/modified.</dd>
+<dt>read-only</dt>
+<dd>The value cannot be modified.</dd>
 </dl>
-<p>Variables of other clients cannot be changed, only queried.</p>
+<p>Variables of other clients cannot be changed, only queried. In order to be
+able to join, all variables of a client must be set (some may have been
+initialized with a default value by the server, these do not need to be
+reset).</p>
 
 <h4><tt>error</tt></h4>
 <p>An error reply. Fields are:</p>
