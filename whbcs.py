@@ -129,6 +129,7 @@ def _format_listing(obj):
         format_text(i)
         if n: items.append(',')
         items.append(dict(i, type='mention'))
+    if not items: items.append('-none-')
     return {'prefix': 'Users online: ', 'text': items}
 OBJECT_TEXTS = {
     'pong': {'prefix': _mkhl('reply', 'PONG')},
