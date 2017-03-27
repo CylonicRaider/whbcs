@@ -77,6 +77,7 @@ class Token(str):
 ERRORS = {
     'AJOINED': 'Already joined.',
     'ALEFT': 'Already left.',
+    'BADENC': 'Bad encoding.',
     'BADLINE': 'Bad line.',
     'BADOBJ': 'Bad object.',
     'BADVAL': 'Bad value.',
@@ -728,7 +729,11 @@ class APILineDiscipline(LineDiscipline):
 
     def __call__(self):
         while 1:
-            line = self.readline()
+            try:
+                line = self.readline()
+            except UnicodeDecodeError:
+                self._deliver(make_error('BADENC', True))
+                continue
             if not line: return None
             line = line.strip()
             if not line:
