@@ -319,6 +319,20 @@ def validate_input(obj):
         return False
     return VALIDATORS[obj['type']](obj)
 
+# Parse the content of a post object.
+MENTION_RE = re.compile(r'\B@(\S+?)(?=[.,:;!?)]*(\s|$))')
+def parse_message(content):
+    ret, pos = [], 0
+    while 1:
+        m = MENTION_RE.search(content, pos)
+        if not m: break
+        if m.start() != pos: ret.append(content[pos:m.start()])
+        ret.append({'type': 'mention', 'content': m.group(1),
+                    'prefix': '@'})
+        pos = m.end()
+    if pos != len(content): ret.append(content[pos:])
+    return ret
+
 # Terminal type registry
 TERMTYPES = {}
 def termtype(name):
@@ -424,7 +438,8 @@ class ChatDistributor:
         def _process_post(self, msg):
             return {'type': 'post', 'variant': msg['variant'],
                     'sender': self._user_info(), 'timestamp': time.time(),
-                    'content': msg['content']}
+                    'content': msg['content'],
+                    'text': parse_message(msg['content'])}
 
         def submit(self, message):
             def reply(msg):
