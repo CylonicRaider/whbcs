@@ -597,6 +597,9 @@ class ChatDistributor:
             else:
                 return None
 
+        def visible(self):
+            return self.vars['joined']
+
     def __init__(self, server):
         self.server = server
         self.handlers = {}
@@ -616,7 +619,7 @@ class ChatDistributor:
 
     def _make_listing(self):
         with self.lock:
-            handlers = list(self.handlers.values())
+            handlers = [h for h in self.handlers.values() if h.visible()]
         return [h._user_info() for h in handlers]
 
     def handle(self, handler, message):
