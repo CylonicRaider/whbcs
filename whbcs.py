@@ -738,6 +738,10 @@ class APILineDiscipline(LineDiscipline):
             if not validate_input(data):
                 self._deliver(make_error('BADOBJ', True))
                 continue
+            if (data['type'] == 'update' and
+                    data['content']['variant'] == 'term'):
+                self._deliver(make_error('VARRO', True))
+                continue
             self.submit(data)
 
 # Intermediate class implementing in-chat commands.
