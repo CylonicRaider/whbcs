@@ -20,6 +20,7 @@ except ImportError:
 HOST = ''
 PORT = 4321
 REUSE_ADDR = True
+KEEP_ALIVE = True
 
 GREETING = '''
 # Weird HomeBrew Chat Server v%s
@@ -376,12 +377,14 @@ class Server:
             self.handler()
 
     @classmethod
-    def listen(cls, addr, logger=None, reuse_addr=False):
+    def listen(cls, addr, logger=None, reuse_addr=False, keep_alive=False):
         if logger:
             logger.info('LISTENING bind=%r' % (addr,))
         s = socket.socket()
         if reuse_addr:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if keep_alive:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         s.bind(addr)
         s.listen(5)
         return cls(s, logger)
@@ -1216,16 +1219,19 @@ def main():
     def interrupt(signo, frame):
         raise KeyboardInterrupt
     # Parse arguments
-    host, port, reuse_addr, logfile = HOST, PORT, REUSE_ADDR, None
+    host, port, reuse_addr, keep_alive = HOST, PORT, REUSE_ADDR, KEEP_ALIVE
+    logfile = None
     try:
         it = iter(sys.argv[1:])
         for arg in it:
             if arg == '--help':
                 die('USAGE: %s [--help] [--host host] [--port port] '
-                    '[--[no-]reuseaddr] [--logfile logfile]\n'
-                    'Defaults: --host %r --port %s --%sreuseaddr\n' % (
-                        sys.argv[0], HOST, PORT,
-                        '' if REUSE_ADDR else 'no-'), 0)
+                    '[--[no-]reuseaddr] [--[no-]keepalive] '
+                    '[--logfile logfile]\n'
+                    'Defaults: --host %r --port %s --%sreuseaddr '
+                    '--%skeepalive\n' % (sys.argv[0], HOST, PORT,
+                        '' if REUSE_ADDR else 'no-',
+                        '' if KEEP_ALIVE else 'no-'), 0)
             elif arg == '--host':
                 host = next(it)
             elif arg == '--port':
@@ -1236,6 +1242,10 @@ def main():
                 reuse_addr = True
             elif arg == '--no-reuseaddr':
                 reuse_addr = False
+            elif arg == '--keepalive':
+                keep_alive = True
+            elif arg == '--no-keepalive':
+                keep_alive = False
             else:
                 die('ERROR: Unrecognized argument %r\n' % arg)
     except StopIteration:
@@ -1252,7 +1262,8 @@ def main():
     signal.signal(signal.SIGTERM, interrupt)
     # Run server
     logging.info(APPNAME + ' ' + VERSION)
-    s = Server.listen((host, port), logging.getLogger(), reuse_addr)
+    s = Server.listen((host, port), logging.getLogger(), reuse_addr,
+                      keep_alive)
     try:
         s()
     except KeyboardInterrupt:
