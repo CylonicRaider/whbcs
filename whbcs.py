@@ -357,8 +357,11 @@ class Server:
             self.file = sock.makefile('rwb')
             self.handler = server.distributor._make_handler(self)
 
+        def log(self, *args):
+            self.server.log(*args)
+
         def close(self):
-            self.server.log('CLOSING id=%r' % self.id)
+            self.log('CLOSING id=%r' % self.id)
             silence(self.socket.shutdown, socket.SHUT_RD)
             silence(self.file.flush)
             silence(self.socket.shutdown, socket.SHUT_WR)
@@ -428,6 +431,9 @@ class ChatDistributor:
             self._closing = False
             distributor._add_handler(self)
 
+        def log(self, *args):
+            self.endpoint.log(*args)
+
         def deliver(self, message):
             if self.vars['send-text']: format_text(message)
             self.discipline.deliver(message)
@@ -458,6 +464,10 @@ class ChatDistributor:
                 desc = self.VARS[res['content']['variant']]
                 if (res['type'] == 'updated' and not desc['private'] and
                         self.vars['joined']):
+                    if res['content']['variant'] == 'nick':
+                        self.log('RENAME id=%r from=%r to=%r' % (self.id,
+                            res['from']['content'],
+                            res['content']['content']))
                     broadcast(res)
                 else:
                     reply(res)
@@ -466,6 +476,8 @@ class ChatDistributor:
                 if res:
                     reply(res)
                 else:
+                    self.log('JOIN id=%r term=%r nick=%r' % (self.id,
+                        self.vars['term'], self.vars['nick']))
                     self.vars['joined'] = True
                     broadcast({'type': 'joined',
                                'content': self._user_info()})
@@ -474,6 +486,9 @@ class ChatDistributor:
                     'content': self.distributor._make_listing()}})
             elif message['type'] == 'send':
                 if self.vars['joined']:
+                    self.log('%s id=%r nick=%r text=%r' % (
+                        'EMOTE' if message['variant'] == 'emote' else 'SAY',
+                        self.id, self.vars['nick'], message['content']))
                     broadcast({'type': 'chat',
                                'content': self._process_post(message)})
                 else:
@@ -483,6 +498,7 @@ class ChatDistributor:
                 if res:
                     reply(res)
                 else:
+                    self.log('LEAVE id=%r' % self.id)
                     self.vars['joined'] = False
                     broadcast({'type': 'left', 'variant': 'normal',
                                'content': self._user_info()})
