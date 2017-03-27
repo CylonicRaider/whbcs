@@ -269,6 +269,8 @@ class Validator:
             return tp
         elif isinstance(tp, dict):
             return DictValidator(**tp)
+        elif isinstance(tp, tuple):
+            return ValueValidator(*tp)
         elif isinstance(tp, type):
             return Validator(tp)
         else:
@@ -312,7 +314,7 @@ VALIDATORS = {
     'join': _DV(type='join'),
     'leave': _DV(type='leave'),
     'list': _DV(type='list'),
-    'send': _DV(type='send', variant=str, content=str),
+    'send': _DV(type='send', variant=('normal', 'emote'), content=str),
     'quit': _DV(type='quit')
     }
 def validate_input(obj):
