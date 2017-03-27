@@ -880,6 +880,13 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
         while 1:
             line = self.readline()
             if not line: return None
+            if re.match(r'\s*/api(\s|$)', line):
+                tokens = Token.extract(line)
+                if len(tokens) != 1:
+                    self.println('FAIL', '#', '/api takes no arguments')
+                    continue
+                self.println('OK')
+                return APILineDiscipline(self.handler)
             res = self.handle_cmdline(line)
             if res is None:
                 continue
