@@ -274,14 +274,14 @@ class Validator:
             return ValueValidator(tp)
     def __init__(self, type):
         self.type = type
-    def check(self, obj):
+    def __call__(self, obj):
         return isinstance(obj, self.type)
 
 class ValueValidator(Validator):
     def __init__(self, *values):
         Validator.__init__(self, object)
         self.values = values
-    def check(self, obj):
+    def __call__(self, obj):
         return (obj in self.values)
 
 class DictValidator(Validator):
@@ -291,14 +291,14 @@ class DictValidator(Validator):
         _self.members = {}
         for k, v in _kwds.items():
             _self.members[k] = Validator.forPattern(v)
-    def check(self, obj):
+    def __call__(self, obj):
         if not isinstance(obj, dict): return False
-        for k, v in self.members:
+        for k, v in self.members.items():
             if k not in obj:
                 if k in self.optional: continue
                 return False
             if not v(obj[k]): return False
-        if set(obj.keys()).difference(self.optional): return False
+        if set(obj).difference(self.members): return False
         return True
 
 _DV = DictValidator
@@ -317,7 +317,7 @@ VALIDATORS = {
 def validate_input(obj):
     if not isinstance(obj, dict) or 'type' not in obj:
         return False
-    return VALIDATORS[obj['type']].check(obj)
+    return VALIDATORS[obj['type']](obj)
 
 # Terminal type registry
 TERMTYPES = {}
