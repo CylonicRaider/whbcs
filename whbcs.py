@@ -328,7 +328,7 @@ def validate_input(obj):
     return VALIDATORS[obj['type']](obj)
 
 # Parse the content of a post object.
-MENTION_RE = re.compile(r'\B@(\S+?)(?=[.,:;!?)]*(\s|$))')
+MENTION_RE = re.compile(r'\B@(\[^\s\0-\37]+?)(?=[.,:;!?)]*(\s|$))')
 def parse_message(content):
     ret, pos = [], 0
     while 1:
@@ -428,7 +428,7 @@ class ChatDistributor:
     # mode of connection.
     class ClientHandler:
         VARS = {'nick': {'type': str, 'private': False, 'rw': True,
-                         'check': re.compile(r'\S+$').match},
+                         'check': re.compile(r'[^\s\0-\37]+$').match},
                 'term': {'type': str, 'private': True, 'rw': True},
                 'send-text': {'type': bool, 'private': True, 'rw': True,
                               'default': True},
