@@ -72,7 +72,7 @@ h4::before {
     <h1>Weird HomeBrew Chat API</h1>
     <hr/>
     <article>
-<aside>Revision 12, as of 2017-03-27</aside>
+<aside>Revision 13, as of 2017-03-28</aside>
 
 <h2>Preface</h2>
 <p><em>WHBCS</em> came into existence after I had a <tt>netcat</tt> chat with
@@ -320,6 +320,11 @@ or a <tt><b>quit</b></tt>) or not, respectively.</p>
 <p>A system message from the server. The <tt>text</tt> fields contains
 more details.</p>
 
+<h4><tt>beacon</tt></h4>
+<p>A message broadcast regularly to all clients depending on server
+configuration. If present, serves as an explicit means of keeping connections
+alive through network layers that would drop them otherwise.</p>
+
 <h3>In-message data types</h3>
 
 <h4><tt>variable</tt></h4>
@@ -339,7 +344,8 @@ requests), or the client is not explicitly identified (such as inside
 <p>Currently defined variables are:</p>
 <ul>
 <li><tt>nick</tt> &mdash; <strong>Nickname</strong>: A string the client
-chose as the nickname for themself.</li>
+chose as the nickname for themself. Valid is subject to approval by the
+server.</li>
 <li><tt>term</tt> &mdash; <strong>Terminal type</strong> <em>(private)</em>:
 The terminal of the client. Of little use to API clients. Set to
 <tt>"api"</tt> by the <tt>/api</tt> command elaborated upon above, and
@@ -471,8 +477,8 @@ surrounding various parts of a chat post.
 <h4><tt>char</tt></h4>
 <p>An unrecognized character encountered in a <tt><b>post</b></tt>. The
 <tt>content</tt> field is a single-character string containing the original
-value as the character code; the <tt>text</tt> holds a replacement character
-(<i>e.g.</i>, a <tt>?</tt>).</p>
+value as the character code; the <tt>text</tt> holds a replacement string
+(<i>e.g.</i>, a <tt>?</tt>, or a <tt>^A</tt>).</p>
 
     </article>
     <hr/>
