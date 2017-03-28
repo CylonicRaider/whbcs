@@ -1164,6 +1164,11 @@ class ANSILineDiscipline(CommandLineDiscipline):
             else:
                 ly = y
 
+    @staticmethod
+    def make_prompt(user):
+        return render_text([_mkhl('chatpad', '<'), user,
+                            _mkhl('chatpad', '>'), ' '], 'ansi')
+
     def __init__(self, endpoint):
         CommandLineDiscipline.__init__(self, endpoint)
         self.encoding = 'ascii'
@@ -1199,7 +1204,7 @@ class ANSILineDiscipline(CommandLineDiscipline):
         self.println('\033c# Bye!')
 
     def _write_prompt(self, echo=None):
-        prompt = '<' + self.handler.vars['nick'] + '> '
+        prompt = self.make_prompt(self.handler._user_info())
         if echo is None:
             self.write('\033[K' + prompt)
         elif echo.startswith('/') and not (echo.startswith('/nick') or
@@ -1241,7 +1246,7 @@ class VTELineDiscipline(ANSILineDiscipline):
         ANSILineDiscipline.deliver(self, message)
 
     def _write_prompt(self, echo=None):
-        prompt = '<' + self.handler.vars['nick'] + '> '
+        prompt = self.make_prompt(self.handler._user_info())
         if echo is None:
             self.write('\033[K' + prompt)
             return
