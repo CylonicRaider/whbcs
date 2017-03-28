@@ -250,7 +250,8 @@ STYLES = {'ansi': {
             'msgtext': _aclr(22, 32),
             'msgerr': _aclr(22, 31),
             'chatpad': _aclr(22, 36)
-        }
+        },
+        'char': _aclr(39, 1)
     }}
 def render_text(obj, term=None):
     styles = None if term is None else STYLES[term]
@@ -328,8 +329,8 @@ def validate_input(obj):
     return VALIDATORS[obj['type']](obj)
 
 # Parse the content of a post object.
-MENTION_RE = re.compile(r'\B@(\[^\s\0-\37]+?)(?=[.,:;!?)]*(\s|$))')
-INTERESTING_RE = re.compile(MENTION_RE.pattern + r'|[\0-\37\177]')
+MENTION_RE = re.compile(r'\B@(\[^\s\0-\x1f]+?)(?=[.,:;!?)]*(\s|$))')
+INTERESTING_RE = re.compile(MENTION_RE.pattern + r'|[\0-\x1f\x7f]')
 def parse_message(content):
     ret, pos = [], 0
     while 1:
@@ -437,7 +438,7 @@ class ChatDistributor:
     # mode of connection.
     class ClientHandler:
         VARS = {'nick': {'type': str, 'private': False, 'rw': True,
-                         'check': re.compile(r'[^\s\0-\37]+$').match},
+                         'check': re.compile(r'[^\s\0-\x1f]+$').match},
                 'term': {'type': str, 'private': True, 'rw': True},
                 'send-text': {'type': bool, 'private': True, 'rw': True,
                               'default': True},
@@ -484,14 +485,16 @@ class ChatDistributor:
                 reply(self.query_var(message['content']))
             elif message['type'] == 'update':
                 res = self.update_var(message['content'])
-                desc = self.VARS[res['content']['variant']]
-                if (res['type'] == 'updated' and not desc['private'] and
-                        self.vars['joined']):
-                    if res['content']['variant'] == 'nick':
-                        self.log('RENAME id=%r from=%r to=%r' % (self.id,
-                            res['from']['content'],
-                            res['content']['content']))
-                    broadcast(res)
+                if res['type'] == 'updated':
+                    desc = self.VARS[res['content']['variant']]
+                    if not desc['private'] and self.vars['joined']:
+                        if res['content']['variant'] == 'nick':
+                            self.log('RENAME id=%r from=%r to=%r' % (self.id,
+                                res['from']['content'],
+                                res['content']['content']))
+                        broadcast(res)
+                    else:
+                        reply(res)
                 else:
                     reply(res)
             elif message['type'] == 'join':
