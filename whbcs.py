@@ -619,7 +619,7 @@ class ChatDistributor:
     def _beacons(self):
         while 1:
             time.sleep(30)
-            self.broadcast({'type': 'beacon'})
+            self.broadcast({'type': 'beacon', 'timestamp': time.time()})
 
     def _make_handler(self, endpoint):
         return self.ClientHandler(self, endpoint)
