@@ -329,14 +329,23 @@ def validate_input(obj):
 
 # Parse the content of a post object.
 MENTION_RE = re.compile(r'\B@(\[^\s\0-\37]+?)(?=[.,:;!?)]*(\s|$))')
+INTERESTING_RE = re.compile(MENTION_RE.pattern + r'|[\0-\37\177]')
 def parse_message(content):
     ret, pos = [], 0
     while 1:
-        m = MENTION_RE.search(content, pos)
-        if not m: break
-        if m.start() != pos: ret.append(content[pos:m.start()])
-        ret.append({'type': 'mention', 'content': m.group(1),
-                    'prefix': '@'})
+        m = INTERESTING_RE.search(content, pos)
+        if not m:
+            break
+        if m.start() != pos:
+            ret.append(content[pos:m.start()])
+        if m.group().startswith('@'):
+            ret.append({'type': 'mention', 'content': m.group(1),
+                        'prefix': '@'})
+        elif m.group() == '\x7f':
+            ret.append({'type': 'char', 'content': m.group(), 'text': '^?'})
+        else:
+            ret.append({'type': 'char', 'content': m.group(),
+                        'text': '^' + chr(ord(m.group()) + 0x40)})
         pos = m.end()
     if pos != len(content): ret.append(content[pos:])
     return ret
