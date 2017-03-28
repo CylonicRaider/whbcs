@@ -17,6 +17,15 @@ try:
 except ImportError:
     import queue
 
+try:
+    unicode
+except NameError:
+    unicode = str
+try:
+    basestring
+except NameError:
+    basestring = (str, unicode)
+
 HOST = ''
 PORT = 4321
 REUSE_ADDR = True
@@ -44,7 +53,7 @@ def silence(func, *args, **kwds):
         return exc
 
 # A string with an integer telling its position within another string.
-class Token(str):
+class Token(unicode):
     @classmethod
     def extract(cls, string, word=r'\S+'):
         pattern, pos, ret = re.compile(word), 0, []
@@ -67,13 +76,13 @@ class Token(str):
         return ret
 
     def __new__(cls, obj, offset):
-        inst = str.__new__(cls, obj)
+        inst = unicode.__new__(cls, obj)
         inst.offset = offset
         return inst
 
     def __repr__(self):
-        return '%s(%s, %r)' % (self.__class__.__name__, str.__repr__(self),
-                               self.offset)
+        return '%s(%s, %r)' % (self.__class__.__name__,
+            unicode.__repr__(self), self.offset)
 
 # Error registry.
 ERRORS = {
@@ -186,7 +195,7 @@ def flatten_text(obj):
     def scrape(obj):
         if obj is None:
             pass
-        elif isinstance(obj, str):
+        elif isinstance(obj, basestring):
             yield obj
         elif isinstance(obj, (tuple, list)):
             for i in obj:
@@ -257,7 +266,7 @@ def render_text(obj, term=None):
     styles = None if term is None else STYLES[term]
     ret = []
     for i in flatten_text(obj):
-        if isinstance(i, str):
+        if isinstance(i, basestring):
             ret.append(i)
         elif styles:
             item = styles.get(i.get('type'))
@@ -989,7 +998,7 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
         elif message['type'] == 'success':
             if 'content' not in message:
                 self.println('OK')
-            elif isinstance(message['content'], str):
+            elif isinstance(message['content'], basestring):
                 self.println('OK', '#', message['content'])
             elif message['content']['type'] == 'variable':
                 self.println('OK', '#', render_text(message['content']))
