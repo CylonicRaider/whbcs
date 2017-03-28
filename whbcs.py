@@ -21,6 +21,7 @@ HOST = ''
 PORT = 4321
 REUSE_ADDR = True
 KEEP_ALIVE = True
+BEACONS = False
 
 GREETING = '''
 # Weird HomeBrew Chat Server v%s
@@ -377,7 +378,8 @@ class Server:
             self.handler()
 
     @classmethod
-    def listen(cls, addr, logger=None, reuse_addr=False, keep_alive=False):
+    def listen(cls, addr, logger=None, beacons=False, reuse_addr=False,
+               keep_alive=False):
         if logger:
             logger.info('LISTENING bind=%r' % (addr,))
         s = socket.socket()
@@ -387,11 +389,12 @@ class Server:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         s.bind(addr)
         s.listen(5)
-        return cls(s, logger)
+        return cls(s, logger, beacons)
 
-    def __init__(self, socket, logger=None):
+    def __init__(self, socket, logger=None, beacons=False):
         self.socket = socket
         self.logger = logger
+        self.beacons = beacons
         self._next_connid = 0
         self.distributor = ChatDistributor(self)
 
@@ -406,6 +409,8 @@ class Server:
         self.log('CLOSED')
 
     def __call__(self):
+        if self.beacons:
+            spawn_thread(self.distributor._beacons)
         while 1:
             conn, addr = self.socket.accept()
             cid = self._next_connid
@@ -610,6 +615,11 @@ class ChatDistributor:
         self.server = server
         self.handlers = {}
         self.lock = threading.RLock()
+
+    def _beacons(self):
+        while 1:
+            time.sleep(30)
+            self.broadcast({'type': 'beacon'})
 
     def _make_handler(self, endpoint):
         return self.ClientHandler(self, endpoint)
@@ -956,6 +966,8 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
     def deliver(self, message):
         if message['type'] == 'sysmsg':
             self.println('#', '!!!', message['text'])
+        elif message['type'] == 'beacon':
+            self.write('\0')
         elif 'seq' not in message:
             return # Explicitly silenced.
         elif message['type'] == 'updated':
@@ -1046,6 +1058,8 @@ class DumbLineDiscipline(CommandLineDiscipline):
         if (message['type'] == 'chat' and
                 message['content']['sender']['uid'] == self.handler.id):
             return # Own chat messages already typed by user.
+        elif message['type'] == 'beacon':
+            self.write('\0') # Beacons are delivered unconditionally.
         with self.lock:
             if self.busy:
                 self.pending.put(message)
@@ -1150,6 +1164,9 @@ class ANSILineDiscipline(CommandLineDiscipline):
         self.write('\0337\033[A\n' + ' '.join(args) + '\0338')
 
     def deliver(self, message):
+        if message['type'] == 'beacon':
+            self.write('\0')
+            return
         text = render_text(message, 'ansi')
         if not text: return
         if (message['type'] == 'chat' and
@@ -1220,18 +1237,18 @@ def main():
         raise KeyboardInterrupt
     # Parse arguments
     host, port, reuse_addr, keep_alive = HOST, PORT, REUSE_ADDR, KEEP_ALIVE
-    logfile = None
+    beacons, logfile = BEACONS, None
     try:
         it = iter(sys.argv[1:])
         for arg in it:
             if arg == '--help':
                 die('USAGE: %s [--help] [--host host] [--port port] '
-                    '[--[no-]reuseaddr] [--[no-]keepalive] '
+                    '[--[no-]reuseaddr] [--[no-]keepalive] [--[no-]beacons] '
                     '[--logfile logfile]\n'
                     'Defaults: --host %r --port %s --%sreuseaddr '
-                    '--%skeepalive\n' % (sys.argv[0], HOST, PORT,
-                        '' if REUSE_ADDR else 'no-',
-                        '' if KEEP_ALIVE else 'no-'), 0)
+                    '--%skeepalive --%sbeacons\n' % (sys.argv[0], HOST, PORT,
+                    '' if REUSE_ADDR else 'no-', '' if KEEP_ALIVE else 'no-',
+                    '' if BEACONS else 'no-'), 0)
             elif arg == '--host':
                 host = next(it)
             elif arg == '--port':
@@ -1246,6 +1263,10 @@ def main():
                 keep_alive = True
             elif arg == '--no-keepalive':
                 keep_alive = False
+            elif arg == '--beacons':
+                beacons = True
+            elif arg == '--no-beacons':
+                beacons = False
             else:
                 die('ERROR: Unrecognized argument %r\n' % arg)
     except StopIteration:
@@ -1262,7 +1283,7 @@ def main():
     signal.signal(signal.SIGTERM, interrupt)
     # Run server
     logging.info(APPNAME + ' ' + VERSION)
-    s = Server.listen((host, port), logging.getLogger(), reuse_addr,
+    s = Server.listen((host, port), logging.getLogger(), beacons, reuse_addr,
                       keep_alive)
     try:
         s()
