@@ -4,7 +4,7 @@
 # Weird HomeBrew Chat Server
 
 APPNAME = 'WHBCS'
-VERSION = '2.0-pre'
+VERSION = '2.0'
 
 import sys, os, re, time, socket
 import json
