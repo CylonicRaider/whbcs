@@ -338,7 +338,7 @@ def validate_input(obj):
     return VALIDATORS[obj['type']](obj)
 
 # Parse the content of a post object.
-MENTION_RE = re.compile(r'\B@(\[^\s\0-\x1f]+?)(?=[.,:;!?)]*(\s|$))')
+MENTION_RE = re.compile(r'\B@([^\s\0-\x1f]+?)(?=[.,:;!?)]*(\s|$))')
 INTERESTING_RE = re.compile(MENTION_RE.pattern + r'|[\0-\x1f\x7f]')
 def parse_message(content):
     ret, pos = [], 0
