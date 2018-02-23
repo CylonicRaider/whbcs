@@ -884,8 +884,8 @@ class CommandLineDiscipline(LineDiscipline):
         def usage():
             return fail(unhash(self.format_help(tokens[0][1:],
                                                 self.helpclass)))
-        def packet(_type, **content):
-            return {'type': _type, 'content': content}
+        def packet(_type, **_content):
+            return {'type': _type, 'content': _content}
         tokens = Token.extract(line)
         if not tokens:
             return None
