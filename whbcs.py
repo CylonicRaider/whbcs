@@ -99,6 +99,7 @@ ERRORS = {
     'NOTYPE': 'No such message type.',
     'NOVAL': 'Variable has no value.',
     'NOVAR': 'No such variable.',
+    'VARJRO': 'Variable is read-only while joined.',
     'VARPRIV': 'Variable is private.',
     'VARRO': 'Variable is read-only.',
     }
@@ -166,6 +167,7 @@ OBJECT_TEXTS = {
     'sysmsg': {'prefix': (_stars, ' ')},
     'post': {'func': _format_post},
     'listing': {'func': _format_listing}}
+# Operates in-place.
 def format_text(obj, _table=None):
     try:
         info = _table[obj['type']]
@@ -448,7 +450,8 @@ class ChatDistributor:
     class ClientHandler:
         VARS = {'nick': {'type': str, 'private': False, 'rw': True,
                          'check': re.compile(r'[^\s\0-\x1f]+$').match},
-                'term': {'type': str, 'private': True, 'rw': True},
+                'term': {'type': str, 'private': True, 'rw': True,
+                         'doorstep': True},
                 'send-text': {'type': bool, 'private': True, 'rw': True,
                               'default': True},
                 'joined': {'type': bool, 'private': False, 'rw': False,
@@ -599,6 +602,8 @@ class ChatDistributor:
             cltid = variable.get('uid', self.id)
             if cltid != self.id or not desc['rw']:
                 return make_error('VARRO', True)
+            if desc.get('doorstep') and self.vars['joined']:
+                return make_error('VARJRO', True)
             try:
                 value = desc['type'](variable['content'])
                 if 'check' in desc and not desc['check'](value):
