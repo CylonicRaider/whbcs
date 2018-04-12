@@ -35,7 +35,7 @@ BEACONS = False
 GREETING = '''
 # Weird HomeBrew Chat Server v%s
 # Type "/help" for a command overview.
-'''[1:-1]
+'''[1:-1] % VERSION
 
 # Spawn a new daemonic thread.
 def spawn_thread(func, *args, **kwds):
@@ -987,7 +987,7 @@ class DoorstepLineDiscipline(CommandLineDiscipline):
     def init(self, first):
         if first:
             self.println(APPNAME, 'v' + VERSION)
-            self.println(GREETING % VERSION)
+            self.println(GREETING)
 
     def deliver(self, message):
         if message['type'] == 'sysmsg':
