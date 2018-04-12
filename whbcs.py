@@ -1054,6 +1054,8 @@ class DumbLineDiscipline(CommandLineDiscipline):
     def init(self, first):
         self._println('# Press Return to write a message.')
         self._submit({'type': 'join'})
+        self._println('# Listing users...')
+        self._submit({'type': 'list'})
 
     def _println(self, *args):
         with self.lock:
@@ -1190,6 +1192,8 @@ class ANSILineDiscipline(CommandLineDiscipline):
         self.println('\033[2J\033[1;%sr\033[%s;1H' % (self.height - 1,
                                                       self.height))
         self._submit({'type': 'join'})
+        self._println('# Listing users...')
+        self._submit({'type': 'list'})
 
     def _println(self, *args):
         self.write('\0337\033[A\n' + ' '.join(args) + '\0338')
