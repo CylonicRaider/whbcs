@@ -335,7 +335,7 @@ VALIDATORS = {
     'quit': _DV(type='quit')
     }
 def validate_input(obj):
-    if not isinstance(obj, dict) or 'type' not in obj:
+    if not isinstance(obj, dict) or obj.get('type') not in VALIDATORS:
         return False
     return VALIDATORS[obj['type']](obj)
 
